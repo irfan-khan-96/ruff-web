@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Your Stashes - Ruff{% endblock %}
+
+{% block content %}
+    <h1>Your Stashes</h1>
+    <ul class="stash-list">
+        {% for stash in stashes %}
+            <li class="stash-item">
+                <div class="stash-card">
+                    <span class="stash-name">{{ stash.text[:50] }}{% if stash.text|length > 50 %}...{% endif %}</span>
+                    <div class="stash-actions">
+                        <a href="{{ url_for('view_stash', stash_id=stash.id) }}" class="action-button">View</a>
+                        <a href="{{ url_for('edit_stash', stash_id=stash.id) }}" class="action-button">Edit</a>
+                        <form action="{{ url_for('delete_stash', stash_id=stash.id) }}" method="POST" class="delete-form">
+                            {{ csrf_token() }}
+                            <button type="submit" class="action-button delete-button">Delete</button>
+                        </form>
+                    </div>
+                </div>
+            </li>
+        {% else %}
+            <li>No stashes found. Start by creating a new stash!</li>
+        {% endfor %}
+    </ul>
+{% endblock %}
+
