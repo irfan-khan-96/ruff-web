@@ -4,10 +4,10 @@
 
 {% block content %}
     <h1>Your Writing Area</h1>
-    <form action="{{ url_for('stash') }}" method="POST" class="stash-form">
-        {{ csrf_token() }}
-        <textarea name="text" placeholder="Start writing..." required>{{ saved_text }}</textarea>
-        <button type="submit" class="save-button">Stash</button>
+    <form action="{{ url_for('main.stash') }}" method="POST" class="stash-form">
+        {{ form.hidden_tag() }}
+        {{ form.text(placeholder="Start writing...", value=saved_text) }}
+        {{ form.submit(class="save-button") }}
     </form>
 {% endblock %}
 

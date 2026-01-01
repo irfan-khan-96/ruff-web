@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Create Collection - Ruff{% endblock %}
+
+{% block content %}
+    <h1>Create New Collection</h1>
+    
+    <form method="POST" class="form-container">
+        {{ form.hidden_tag() }}
+        
+        <div class="form-group">
+            {{ form.name.label }}
+            {% if form.name.errors %}
+                {{ form.name(class="form-control error") }}
+                <div class="error-message">
+                    {% for error in form.name.errors %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% else %}
+                {{ form.name(class="form-control") }}
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            {{ form.description.label }}
+            {% if form.description.errors %}
+                {{ form.description(class="form-control error") }}
+                <div class="error-message">
+                    {% for error in form.description.errors %}
+                    <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% else %}
+                {{ form.description(class="form-control") }}
+            {% endif %}
+        </div>
+        
+        <div class="form-actions">
+            {{ form.submit(class="action-button") }}
+            <a href="{{ url_for('main.view_collections') }}" class="action-button">Cancel</a>
+        </div>
+    </form>
+    
+    <style>
+        .form-container {
+            max-width: 500px;
+            margin: 20px 0;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: var(--background-color);
+            color: var(--text-color);
+            font-family: inherit;
+        }
+        
+        .form-control.error {
+            border-color: #e74c3c;
+        }
+        
+        .error-message {
+            color: #e74c3c;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+{% endblock %}

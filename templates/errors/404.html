@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Page Not Found - Ruff{% endblock %}
+
+{% block content %}
+    <div class="error-container">
+        <h1>404 - Page Not Found</h1>
+        <p>Sorry, the page you're looking for doesn't exist.</p>
+        <a href="{{ url_for('main.index') }}" class="action-button">Back to Home</a>
+    </div>
+{% endblock %}

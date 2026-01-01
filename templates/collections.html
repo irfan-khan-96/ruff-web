@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Collections - Ruff{% endblock %}
+
+{% block content %}
+    <h1>Collections</h1>
+    <a href="{{ url_for('main.create_collection') }}" class="action-button">New Collection</a>
+    
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Stashes</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for collection in collections %}
+            <tr>
+                <td><strong>{{ collection.name }}</strong></td>
+                <td>{{ collection.description or '-' }}</td>
+                <td>{{ collection.stash_count }}</td>
+                <td>{{ collection.created_at }}</td>
+                <td>
+                    <a href="{{ url_for('main.view_stashes', collection=collection.id) }}" class="action-button">View</a>
+                    <form action="{{ url_for('main.delete_collection', collection_id=collection.id) }}" method="POST" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="action-button delete-button" onclick="return confirm('Delete this collection?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5">No collections yet. <a href="{{ url_for('main.create_collection') }}">Create one</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <style>
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .table th, .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--card-hover);
+        }
+        
+        .table th {
+            background: var(--card-background);
+            font-weight: bold;
+        }
+        
+        .table tr:hover {
+            background: var(--card-hover);
+        }
+    </style>
+{% endblock %}

@@ -3,25 +3,100 @@
 {% block title %}Your Stashes - Ruff{% endblock %}
 
 {% block content %}
-    <h1>Your Stashes</h1>
-    <ul class="stash-list">
-        {% for stash in stashes %}
-            <li class="stash-item">
-                <div class="stash-card">
-                    <span class="stash-name">{{ stash.text[:50] }}{% if stash.text|length > 50 %}...{% endif %}</span>
-                    <div class="stash-actions">
-                        <a href="{{ url_for('view_stash', stash_id=stash.id) }}" class="action-button">View</a>
-                        <a href="{{ url_for('edit_stash', stash_id=stash.id) }}" class="action-button">Edit</a>
-                        <form action="{{ url_for('delete_stash', stash_id=stash.id) }}" method="POST" class="delete-form">
-                            {{ csrf_token() }}
-                            <button type="submit" class="action-button delete-button">Delete</button>
-                        </form>
-                    </div>
+    <div class="stash-container">
+        <!-- Sidebar with filters -->
+        <aside class="stash-sidebar">
+            <h3>Filter & Search</h3>
+            
+            <!-- Search Box -->
+            <div class="filter-section">
+                <form method="get" action="{{ url_for('main.view_stashes') }}" class="search-form">
+                    <input type="text" name="search" placeholder="Search stashes..." value="{{ search_query or '' }}" class="form-control">
+                    <button type="submit" class="btn-search">Search</button>
+                </form>
+            </div>
+            
+            <!-- Collections Filter -->
+            {% if collections %}
+            <div class="filter-section">
+                <h4>Collections</h4>
+                <ul class="filter-list">
+                    <li><a href="{{ url_for('main.view_stashes') }}" class="filter-link {% if not current_collection %}active{% endif %}">All Collections</a></li>
+                    {% for collection in collections %}
+                    <li>
+                        <a href="{{ url_for('main.view_stashes', collection=collection.id) }}" class="filter-link {% if current_collection == collection.id %}active{% endif %}">
+                            {{ collection.name }} ({{ collection.stash_count }})
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <a href="{{ url_for('main.view_collections') }}" class="btn-small">Manage Collections</a>
+            </div>
+            {% endif %}
+            
+            <!-- Tags Filter -->
+            {% if tags %}
+            <div class="filter-section">
+                <h4>Tags</h4>
+                <div class="tag-cloud">
+                    {% for tag in tags %}
+                    <a href="{{ url_for('main.view_stashes', tag=tag.name) }}" class="tag-button {% if current_tag == tag.name %}active{% endif %}">
+                        #{{ tag.name }} ({{ tag.stash_count }})
+                    </a>
+                    {% endfor %}
                 </div>
-            </li>
-        {% else %}
-            <li>No stashes found. Start by creating a new stash!</li>
-        {% endfor %}
-    </ul>
+                <a href="{{ url_for('main.view_tags') }}" class="btn-small">Manage Tags</a>
+            </div>
+            {% endif %}
+        </aside>
+        
+        <!-- Main content -->
+        <main class="stash-main">
+            <h1>Your Stashes
+                {% if search_query %}<span class="filter-badge">Search: "{{ search_query }}"</span>{% endif %}
+                {% if current_collection %}<span class="filter-badge">Collection: {{ current_collection }}</span>{% endif %}
+                {% if current_tag %}<span class="filter-badge">Tag: #{{ current_tag }}</span>{% endif %}
+            </h1>
+            
+            <ul class="stash-list">
+                {% for stash in stashes %}
+                    <li class="stash-item">
+                        <div class="stash-card">
+                            <div class="stash-info">
+                                <span class="stash-preview">{{ stash.preview }}</span>
+                                {% if stash.collection_name %}<span class="stash-collection">📁 {{ stash.collection_name }}</span>{% endif %}
+                                {% if stash.tags %}
+                                <div class="stash-tags">
+                                    {% for tag in stash.tags %}
+                                    <a href="{{ url_for('main.view_stashes', tag=tag) }}" class="tag-small">#{{ tag }}</a>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                                <span class="stash-date">{{ stash.created_at }}</span>
+                            </div>
+                            <div class="stash-actions">
+                                <a href="{{ url_for('main.view_stash', stash_id=stash.id) }}" class="action-button">View</a>
+                                <a href="{{ url_for('main.edit_stash', stash_id=stash.id) }}" class="action-button">Edit</a>
+                                <form action="{{ url_for('main.delete_stash', stash_id=stash.id) }}" method="POST" class="delete-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <button type="submit" class="action-button delete-button">Delete</button>
+                                </form>
+                            </div>
+                        </div>
+                    </li>
+                {% else %}
+                    <li class="empty-state">
+                        <p>No stashes found. 
+                            {% if search_query or current_collection or current_tag %}
+                                Try adjusting your filters.
+                            {% else %}
+                                Start by creating a new stash!
+                            {% endif %}
+                        </p>
+                    </li>
+                {% endfor %}
+            </ul>
+        </main>
+    </div>
 {% endblock %}
 
