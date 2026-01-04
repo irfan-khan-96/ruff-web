@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Import Data - Ruff{% endblock %}
+
+{% block content %}
+<div class="import-container">
+    <div class="import-card">
+        <h1>Import Stashes</h1>
+        <p class="import-description">
+            Upload a previously exported JSON file to restore your stashes, collections, and tags.
+        </p>
+        
+        <form method="POST" enctype="multipart/form-data" class="import-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            
+            <div class="file-upload-area">
+                <input type="file" id="file-input" name="file" accept=".json" required>
+                <label for="file-input" class="file-upload-label">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">
+                        <p class="upload-main">Click to select or drag and drop</p>
+                        <p class="upload-sub">JSON files only</p>
+                    </div>
+                </label>
+            </div>
+            
+            <div id="file-name" class="file-name" style="display: none;"></div>
+            
+            <div class="import-info">
+                <h3>What will be imported:</h3>
+                <ul>
+                    <li>✓ All stashes with their content</li>
+                    <li>✓ Collections and their organization</li>
+                    <li>✓ Tags and stash associations</li>
+                    <li>✓ Timestamps and metadata</li>
+                </ul>
+                <p class="import-note">
+                    <strong>Note:</strong> Existing stashes with the same ID will be skipped to prevent duplicates.
+                </p>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Import Data</button>
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+        
+        <hr>
+        
+        <h3>Export Your Data</h3>
+        <p>Before importing, you can export your current data as a backup.</p>
+        <a href="{{ url_for('main.export_data') }}" class="btn btn-secondary">
+            ⬇️ Download All Stashes
+        </a>
+    </div>
+</div>
+
+<style>
+.import-container {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.import-card {
+    background: var(--card-background);
+    border-radius: 8px;
+    padding: 40px;
+    width: 100%;
+    max-width: 600px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.import-card h1 {
+    text-align: center;
+    margin-bottom: 10px;
+    color: var(--text-color);
+}
+
+.import-description {
+    text-align: center;
+    color: var(--text-color);
+    margin-bottom: 30px;
+    opacity: 0.8;
+}
+
+.import-form {
+    margin-bottom: 30px;
+}
+
+.file-upload-area {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+#file-input {
+    display: none;
+}
+
+.file-upload-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    border: 2px dashed #0066cc;
+    border-radius: 8px;
+    background-color: rgba(0, 102, 204, 0.05);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.file-upload-label:hover {
+    border-color: #0052a3;
+    background-color: rgba(0, 102, 204, 0.1);
+}
+
+.upload-icon {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+
+.upload-text p {
+    margin: 0;
+    color: var(--text-color);
+}
+
+.upload-main {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.upload-sub {
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.file-name {
+    padding: 10px;
+    background-color: #d4edda;
+    color: #155724;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.import-info {
+    background-color: var(--background-color);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.import-info h3 {
+    margin-top: 0;
+    color: var(--text-color);
+}
+
+.import-info ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.import-info li {
+    padding: 8px 0;
+    color: var(--text-color);
+}
+
+.import-note {
+    font-size: 14px;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    opacity: 0.8;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+}
+
+.btn {
+    flex: 1;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 600;
+    text-decoration: none;
+    text-align: center;
+}
+
+.btn-primary {
+    background-color: #0066cc;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #0052a3;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    margin: 30px 0;
+}
+
+.import-card h3 {
+    margin-bottom: 10px;
+    color: var(--text-color);
+}
+
+.import-card > p {
+    color: var(--text-color);
+    margin-bottom: 15px;
+}
+</style>
+
+<script>
+// File input change handler
+document.getElementById('file-input').addEventListener('change', function(e) {
+    const fileName = this.files[0]?.name;
+    const fileNameEl = document.getElementById('file-name');
+    
+    if (fileName) {
+        fileNameEl.textContent = '✓ Selected: ' + fileName;
+        fileNameEl.style.display = 'block';
+    } else {
+        fileNameEl.style.display = 'none';
+    }
+});
+
+// Drag and drop functionality
+const fileUploadArea = document.querySelector('.file-upload-label');
+
+fileUploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    fileUploadArea.style.borderColor = '#0052a3';
+    fileUploadArea.style.backgroundColor = 'rgba(0, 102, 204, 0.15)';
+});
+
+fileUploadArea.addEventListener('dragleave', () => {
+    fileUploadArea.style.borderColor = '#0066cc';
+    fileUploadArea.style.backgroundColor = 'rgba(0, 102, 204, 0.05)';
+});
+
+fileUploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    fileUploadArea.style.borderColor = '#0066cc';
+    fileUploadArea.style.backgroundColor = 'rgba(0, 102, 204, 0.05)';
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        document.getElementById('file-input').files = files;
+        // Trigger change event
+        document.getElementById('file-input').dispatchEvent(new Event('change', { bubbles: true }));
+    }
+});
+</script>
+{% endblock %}

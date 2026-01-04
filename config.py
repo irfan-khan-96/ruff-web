@@ -52,6 +52,8 @@ class TestingConfig(Config):
     DEBUG = True
     TESTING = True
     WTF_CSRF_ENABLED = False
+    # Use in-memory DB so tests never touch the real data file
+    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
 
 
 def get_config(env: str = None) -> Config:

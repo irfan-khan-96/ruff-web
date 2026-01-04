@@ -52,19 +52,56 @@
         
         <!-- Main content -->
         <main class="stash-main">
-            <h1>Your Stashes
+            <div class="page-hero">
+                <div class="page-hero-text">
+                    <h1>Your Stashes</h1>
+                    <p class="page-sub">Stay organized and ship faster — filters and bulk actions are ready.</p>
+                </div>
+                <div class="page-hero-actions">
+                    <a class="btn btn-secondary" href="{{ url_for('main.index') }}">New Stash</a>
+                    <a class="btn btn-secondary" href="{{ url_for('main.export_data') }}">Export</a>
+                </div>
+            </div>
+            <div class="filter-badges">
                 {% if search_query %}<span class="filter-badge">Search: "{{ search_query }}"</span>{% endif %}
                 {% if current_collection %}<span class="filter-badge">Collection: {{ current_collection }}</span>{% endif %}
                 {% if current_tag %}<span class="filter-badge">Tag: #{{ current_tag }}</span>{% endif %}
-            </h1>
+            </div>
+            
+            <!-- Bulk Actions Bar -->
+            <div id="bulk-actions-bar" class="bulk-actions-bar" style="display: none;">
+                <div class="bulk-info">
+                    <span id="selected-count">0</span> stash(es) selected
+                </div>
+                <div class="bulk-buttons">
+                    <button id="select-all-btn" class="btn btn-secondary">Select All</button>
+                    <button id="deselect-all-btn" class="btn btn-secondary">Deselect All</button>
+                    <select id="bulk-move-to" class="bulk-select">
+                        <option value="">Move to Collection...</option>
+                        <option value="-1">Remove from Collection</option>
+                        {% for collection in collections %}
+                        <option value="{{ collection.id }}">{{ collection.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button id="bulk-delete-btn" class="btn btn-danger">Delete Selected</button>
+                </div>
+            </div>
             
             <ul class="stash-list">
                 {% for stash in stashes %}
                     <li class="stash-item">
-                        <div class="stash-card">
+                        <div class="stash-card polaroid">
+                            <div class="stash-checkbox">
+                                <input type="checkbox" class="stash-select" data-stash-id="{{ stash.id }}" />
+                            </div>
                             <div class="stash-info">
-                                <span class="stash-preview">{{ stash.preview }}</span>
-                                {% if stash.collection_name %}<span class="stash-collection">📁 {{ stash.collection_name }}</span>{% endif %}
+                                <div class="stash-header">
+                                    <span class="stash-title">{{ stash.preview }}</span>
+                                </div>
+                                <div class="stash-meta">
+                                    {% if stash.collection_name %}<span class="stash-collection">📁 {{ stash.collection_name }}</span>{% endif %}
+                                    <span class="stash-date">Added {{ stash.created_at | replace(' ', ' · ', 1) }}</span>
+                                </div>
                                 {% if stash.tags %}
                                 <div class="stash-tags">
                                     {% for tag in stash.tags %}
@@ -72,7 +109,6 @@
                                     {% endfor %}
                                 </div>
                                 {% endif %}
-                                <span class="stash-date">{{ stash.created_at }}</span>
                             </div>
                             <div class="stash-actions">
                                 <a href="{{ url_for('main.view_stash', stash_id=stash.id) }}" class="action-button">View</a>
@@ -86,17 +122,164 @@
                     </li>
                 {% else %}
                     <li class="empty-state">
-                        <p>No stashes found. 
-                            {% if search_query or current_collection or current_tag %}
-                                Try adjusting your filters.
-                            {% else %}
-                                Start by creating a new stash!
-                            {% endif %}
-                        </p>
+                        <div class="empty-card polaroid">
+                            <div class="empty-title">No stashes yet</div>
+                            <div class="empty-sub">Capture your first note or tweak your filters.</div>
+                            <div class="empty-actions">
+                                <a class="btn btn-secondary" href="{{ url_for('main.index') }}">New Stash</a>
+                                <a class="btn btn-secondary" href="{{ url_for('main.view_stashes') }}">Reset Filters</a>
+                            </div>
+                        </div>
                     </li>
                 {% endfor %}
             </ul>
         </main>
     </div>
-{% endblock %}
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const bulkActionsBar = document.getElementById('bulk-actions-bar');
+    const selectAllBtn = document.getElementById('select-all-btn');
+    const deselectAllBtn = document.getElementById('deselect-all-btn');
+    const bulkMoveSelect = document.getElementById('bulk-move-to');
+    const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+    const selectedCountSpan = document.getElementById('selected-count');
+    const stashList = document.querySelector('.stash-list');
+    
+    // Check if elements exist
+    if (!bulkActionsBar || !stashList) {
+        console.log('Bulk actions elements not found');
+        return;
+    }
+    
+    function getCheckboxes() {
+        return document.querySelectorAll('.stash-select');
+    }
+    
+    function updateBulkActionsBar() {
+        const checkboxes = getCheckboxes();
+        const selectedStashes = Array.from(checkboxes).filter(cb => cb.checked);
+        const count = selectedStashes.length;
+        
+        if (count > 0) {
+            bulkActionsBar.style.display = 'flex';
+            selectedCountSpan.textContent = count;
+        } else {
+            bulkActionsBar.style.display = 'none';
+        }
+    }
+    
+    // Event delegation for checkbox changes
+    stashList.addEventListener('change', function(e) {
+        if (e.target.classList.contains('stash-select')) {
+            updateBulkActionsBar();
+        }
+    });
+    
+    // Select all functionality
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', () => {
+            const checkboxes = getCheckboxes();
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+            });
+            updateBulkActionsBar();
+        });
+    }
+    
+    // Deselect all functionality
+    if (deselectAllBtn) {
+        deselectAllBtn.addEventListener('click', () => {
+            const checkboxes = getCheckboxes();
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            updateBulkActionsBar();
+        });
+    }
+    
+    // Bulk move to collection
+    if (bulkMoveSelect) {
+        bulkMoveSelect.addEventListener('change', async (e) => {
+            if (!e.target.value) return;
+            
+            const checkboxes = getCheckboxes();
+            const selectedStashes = Array.from(checkboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.dataset.stashId);
+            
+            if (selectedStashes.length === 0) {
+                alert('Please select at least one stash.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('{{ url_for("main.bulk_move") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        stash_ids: selectedStashes,
+                        collection_id: e.target.value === '-1' ? null : parseInt(e.target.value)
+                    })
+                });
+                
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Error moving stashes. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error moving stashes.');
+            }
+            
+            bulkMoveSelect.value = '';
+        });
+    }
+    
+    // Bulk delete
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', async () => {
+            const checkboxes = getCheckboxes();
+            const selectedStashes = Array.from(checkboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.dataset.stashId);
+            
+            if (selectedStashes.length === 0) {
+                alert('Please select at least one stash.');
+                return;
+            }
+            
+            if (!confirm(`Delete ${selectedStashes.length} stash(es)? This cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('{{ url_for("main.bulk_delete") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        stash_ids: selectedStashes
+                    })
+                });
+                
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Error deleting stashes. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting stashes.');
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

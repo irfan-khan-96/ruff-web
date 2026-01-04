@@ -5,17 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Ruff App{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Permanent+Marker&family=Rubik:wght@300;400;500;700&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="recess-theme">
     <!-- Navbar -->
     <nav class="navbar">
         <div class="navbar-container">
-            <a href="{{ url_for('main.index') }}" class="navbar-brand">Ruff</a>
+                        <div class="navbar-left">
+                                <a href="{{ url_for('main.index') }}" class="navbar-brand">Ruff</a>
+                        </div>
             <ul class="navbar-menu">
-                <li><a href="{{ url_for('main.index') }}" class="nav-link">Home</a></li>
-                <li><a href="{{ url_for('main.view_stashes') }}" class="nav-link">Stashes</a></li>
-                <li><a href="{{ url_for('main.view_collections') }}" class="nav-link">Collections</a></li>
-                <li><a href="{{ url_for('main.view_tags') }}" class="nav-link">Tags</a></li>
+                {% if g.user %}
+                    <li><a href="{{ url_for('main.index') }}" class="nav-link">Home</a></li>
+                    <li><a href="{{ url_for('main.view_stashes') }}" class="nav-link">Stashes</a></li>
+                    <li><a href="{{ url_for('main.view_collections') }}" class="nav-link">Collections</a></li>
+                    <li><a href="{{ url_for('main.view_tags') }}" class="nav-link">Tags</a></li>
+                    <li class="nav-dropdown">
+                        <a href="#" class="nav-link dropdown-toggle">⚙️ More</a>
+                        <ul class="dropdown-menu">
+                            <li><a href="{{ url_for('main.export_data') }}" class="dropdown-link">⬇️ Export All</a></li>
+                            <li><a href="{{ url_for('main.import_data') }}" class="dropdown-link">⬆️ Import</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-user">
+                        <span class="nav-username">{{ g.user.username }}</span>
+                        <a href="{{ url_for('main.logout') }}" class="nav-link logout-link">Logout</a>
+                    </li>
+                {% else %}
+                    <li><a href="{{ url_for('main.login') }}" class="nav-link">Login</a></li>
+                    <li><a href="{{ url_for('main.signup') }}" class="nav-link">Sign Up</a></li>
+                {% endif %}
             </ul>
             <button id="theme-toggle" class="theme-toggle">🌙</button>
         </div>
@@ -38,6 +57,10 @@
     <div class="container">
         {% block content %}{% endblock %}
     </div>
+
+    <footer class="footer-doodle">
+        <div class="footer-line">✏️ Ruff · Third Street scribbles · Keep stashing</div>
+    </footer>
 
     <!-- JavaScript for Theme Toggle -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>

@@ -9,6 +9,7 @@
     </div>
     <div class="stash-actions">
         <a href="{{ url_for('main.edit_stash', stash_id=stash.id) }}" class="action-button">Edit</a>
+        <a href="{{ url_for('main.export_stash', stash_id=stash.id) }}" class="action-button">⬇️ Export</a>
         <a href="{{ url_for('main.view_stashes') }}" class="action-button">Back to Stashes</a>
     </div>
 {% endblock %}

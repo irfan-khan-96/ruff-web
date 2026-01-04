@@ -4,10 +4,12 @@ Ruff - A Flask-based text stashing application.
 A simple and elegant way to save, organize, and manage text snippets.
 """
 
+import json
 import logging
 import logging.handlers
 import os
-from flask import Flask, render_template
+import uuid
+from flask import Flask, render_template, g, request, has_request_context
 
 from config import get_config
 from routes import bp, csrf
@@ -39,22 +41,31 @@ def create_app(config_name: str = None) -> Flask:
     # Register blueprints
     app.register_blueprint(bp)
     
+    # Request ID + structured logging context
+    @app.before_request
+    def add_request_id():
+        req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        g.request_id = req_id
+        # Attach to WSGI environ for access logs if desired
+        request.environ["request_id"] = req_id
+
+    @app.after_request
+    def inject_request_id(response):
+        if hasattr(g, "request_id"):
+            response.headers["X-Request-ID"] = g.request_id
+        return response
+    
     # Setup logging
     setup_logging(app)
     
     # Register error handlers
     register_error_handlers(app)
     
-    # Create database tables
-    try:
-        with app.app_context():
-            db.create_all()
-            logger = logging.getLogger(__name__)
-            logger.info("Application initialized")
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"Failed to initialize application: {e}")
-        raise
+    # NOTE: schema creation is handled via migrations (Alembic) and should not
+    # run automatically on startup to avoid production drift. Ensure migrations
+    # are applied as part of your deploy pipeline.
+    logger = logging.getLogger(__name__)
+    logger.info("Application initialized (migrations must be applied separately)")
     
     return app
 
@@ -86,9 +97,18 @@ def setup_logging(app: Flask) -> None:
     console_handler.setLevel(logging.DEBUG if app.debug else logging.INFO)
     
     # Create formatter
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    class JsonFormatter(logging.Formatter):
+        def format(self, record):
+            payload = {
+                "ts": self.formatTime(record, self.datefmt),
+                "level": record.levelname,
+                "logger": record.name,
+                "request_id": getattr(record, "request_id", "-"),
+                "message": record.getMessage(),
+            }
+            return json.dumps(payload)
+
+    formatter = JsonFormatter()
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
     
@@ -96,6 +116,18 @@ def setup_logging(app: Flask) -> None:
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
     logger.setLevel(logging.DEBUG if app.debug else logging.INFO)
+    
+    # Inject request_id into log records
+    class RequestIdFilter(logging.Filter):
+        def filter(self, record):
+            if has_request_context():
+                record.request_id = getattr(g, "request_id", "-")
+            else:
+                record.request_id = "-"
+            return True
+    req_filter = RequestIdFilter()
+    file_handler.addFilter(req_filter)
+    console_handler.addFilter(req_filter)
 
 
 def register_error_handlers(app: Flask) -> None:

@@ -1,11 +1,31 @@
+.empty-card {
+    background: linear-gradient(180deg, #fffefc, #fff9f2);
+    border: 2px solid rgba(0,0,0,0.06);
+    border-radius: 14px;
+    box-shadow: 6px 6px 0 rgba(0,0,0,0.05);
+    padding: 20px 18px;
+    max-width: 520px;
+    margin: 0 auto;
+}
+
+.empty-title { font-weight: 800; font-size: 18px; color: var(--text-color); }
+.empty-sub { color: rgba(20,48,44,0.75); margin: 6px 0 10px; }
+.empty-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 /* CSS Variables for Light and Dark Themes */
 :root {
-    --background-color: #1e1e1e;
-    --text-color: #f1f1f1;
-    --card-background: #2e2e2e;
-    --card-hover: #3a3a3a;
-    --button-background: #444444;
-    --button-text: #f1f1f1;
+    /* Recess-inspired palette */
+    --primary: #FFB02E; /* warm golden orange */
+    --secondary: #4FC3FF; /* bright sky blue */
+    --accent: #FF6F88; /* playful pink */
+    --surface: #FFF8ED; /* soft cream */
+    --background-color: #FFFDF6; /* light paper */
+    --text-color: #14302C; /* dark teal (refined) */
+    --card-background: var(--surface);
+    --card-hover: #FFF1D9;
+    --button-background: #FFD27A;
+    --button-text: #162D2B;
+    --border-color: #F0A800;
+    --shadow-color: rgba(20,48,44,0.08);
     --flash-success: #2ecc71;
     --flash-error: #e74c3c;
 }
@@ -21,25 +41,154 @@ body.light-theme {
     --flash-error: #c0392b;
 }
 
+/* Dark / night mode */
+body.dark-theme {
+    --background-color: #0d111a;
+    --text-color: #e6edf3;
+    --card-background: #111826;
+    --card-hover: #0f1a2a;
+    --button-background: #1b2535;
+    --button-text: #e2e8f0;
+    --border-color: #1c2430;
+    --shadow-color: rgba(0,0,0,0.28);
+    --flash-success: #22c55e;
+    --flash-error: #ef4444;
+}
+
 /* General body styling */
 body, html {
     margin: 0;
     padding: 0;
-    font-family: 'Bahnschrift', 'Segoe UI', Arial, sans-serif;
+    font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
     background-color: var(--background-color);
     color: var(--text-color);
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    transition: background-color 0.3s, color 0.3s;
+    transition: background-color 0.24s ease, color 0.24s ease;
+}
+
+/* Softened notebook motif for a more polished feel */
+body.recess-theme {
+    background-color: var(--background-color);
+    background-image:
+        linear-gradient(rgba(255,255,255,0.75), rgba(255,255,255,0.75)),
+        repeating-linear-gradient(
+            to bottom,
+            rgba(255,255,255,0.0) 0px,
+            rgba(255,255,255,0.0) 30px,
+            rgba(20,48,44,0.02) 31px
+        );
+    background-size: auto;
+}
+
+body.recess-theme::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(to right, rgba(79,195,255,0.08) 0, rgba(79,195,255,0.08) 24px, transparent 24px);
+    opacity: 0.5;
+    z-index: 0;
+}
+
+body.recess-theme.dark-theme {
+    background-image: none;
+    background-color: var(--background-color);
+}
+
+body.recess-theme.dark-theme::before {
+    background: none;
+}
+
+/* Dark theme component overrides */
+.dark-theme .stash-sidebar,
+.dark-theme .writing-hero,
+.dark-theme .bulk-actions-bar,
+.dark-theme .empty-card,
+.dark-theme .page-hero,
+.dark-theme .container,
+.dark-theme .stash-card,
+.dark-theme .polaroid,
+.dark-theme .tag-button,
+.dark-theme .filter-badge,
+.dark-theme .page-hero-actions .btn,
+.dark-theme .btn,
+.dark-theme .btn-small,
+.dark-theme .btn-search,
+.dark-theme .btn-danger,
+.dark-theme .btn-secondary,
+.dark-theme .bulk-select,
+.dark-theme .search-form input,
+.dark-theme .hero-pill {
+    background: var(--card-background);
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.25);
+    color: var(--text-color);
+}
+
+.dark-theme .polaroid { background: linear-gradient(180deg, #121c2b, #0e1727); }
+
+.dark-theme .stash-card,
+.dark-theme .bulk-actions-bar,
+.dark-theme .empty-card,
+.dark-theme .writing-hero,
+.dark-theme .stash-sidebar {
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.dark-theme .tag-button,
+.dark-theme .filter-badge {
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 1px 1px 0 rgba(0,0,0,0.35);
+}
+
+.dark-theme .stash-collection {
+    background: linear-gradient(135deg, #273449, #1c2434);
+    color: #e6edf3;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.dark-theme .stash-date {
+    background: #101726;
+    border: 1px dotted rgba(255,255,255,0.1);
+    color: #e6edf3;
+    box-shadow: 1px 1px 0 rgba(0,0,0,0.35);
+}
+
+.dark-theme .navbar {
+    background: linear-gradient(90deg, rgba(44,54,73,0.6), rgba(14,20,35,0.75));
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.dark-theme .footer-line {
+    background: #0f1626;
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.3);
+    color: #e6edf3;
+}
+
+/* subtle paper texture overlay */
+body.recess-theme::after {
+    content: '';
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(rgba(0,0,0,0.012) 1px, transparent 1px);
+    background-size: 6px 6px;
+    opacity: 0.6;
 }
 
 /* Navbar Styling */
 .navbar {
     width: 100%;
-    background-color: var(--card-background);
-    padding: 10px 20px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(90deg, rgba(58,176,255,0.08), rgba(255,176,46,0.03));
+    padding: 10px 18px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.04);
+    border-bottom: 3px dashed rgba(255,176,46,0.8);
+    position: relative;
+    z-index: 2;
 }
 
 .navbar-container {
@@ -51,10 +200,33 @@ body, html {
 }
 
 .navbar-brand {
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 22px;
+    font-weight: 700;
     color: var(--text-color);
     text-decoration: none;
+    font-family: 'Luckiest Guy', 'Permanent Marker', cursive;
+    letter-spacing: 0.6px;
+    padding: 6px 2px;
+}
+
+.navbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-mural {
+    width: 0; /* removed; kept for compatibility */
+    height: 0;
+    display: none;
+}
+
+/* Chalkboard header variant for some pages */
+.chalkboard {
+    background: linear-gradient(180deg,#0d3a2c,#113a2f);
+    color: #fff;
+    border-bottom: 4px solid rgba(0,0,0,0.15);
+    font-family: 'Permanent Marker', 'Luckiest Guy', cursive;
 }
 
 .navbar-menu {
@@ -76,6 +248,71 @@ body, html {
     color: #007BFF; /* Accent color on hover */
 }
 
+.nav-dropdown {
+    position: relative;
+}
+
+.dropdown-toggle::after {
+    content: '';
+}
+
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% - 2px);
+    left: 0;
+    list-style: none;
+    padding: 8px 0;
+    margin: 0;
+    background: var(--card-background);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    min-width: 150px;
+    z-index: 1000;
+}
+
+.nav-dropdown:hover .dropdown-menu,
+.nav-dropdown:focus-within .dropdown-menu,
+.nav-dropdown .dropdown-menu:hover {
+    display: block;
+}
+
+.dropdown-link {
+    display: block;
+    padding: 10px 20px;
+    color: var(--text-color);
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+
+.dropdown-link:hover {
+    background-color: var(--card-hover);
+    color: #007BFF;
+}
+
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 15px;
+    padding-left: 15px;
+    border-left: 1px solid var(--text-color);
+}
+
+.nav-username {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.logout-link {
+    color: #e74c3c;
+}
+
+.logout-link:hover {
+    color: #c0392b;
+}
+
 /* Theme Toggle Button */
 .theme-toggle {
     background: none;
@@ -92,11 +329,82 @@ body, html {
 
 /* Container for Main Content */
 .container {
-    text-align: center;
-    width: 90%;
-    max-width: 800px;
-    margin: 20px auto;
+    text-align: left;
+    width: 92%;
+    max-width: 1200px;
+    margin: 32px auto;
     flex: 1;
+    position: relative;
+    z-index: 1;
+}
+
+.writing-hero {
+    margin: 32px auto;
+    padding: 26px 24px;
+    border-radius: 16px;
+    border: 2px solid rgba(0,0,0,0.06);
+    box-shadow: 8px 8px 0 rgba(0,0,0,0.05);
+    background: linear-gradient(180deg, #fffefc, #fff9f2);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.writing-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.hero-pill {
+    background: linear-gradient(135deg, #ffe6b3, #ffd27a);
+    color: var(--text-color);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.07);
+    border: 2px solid rgba(0,0,0,0.06);
+    font-family: 'Luckiest Guy', 'Permanent Marker', cursive;
+}
+
+.hero-sub {
+    font-size: 15px;
+    color: rgba(20,48,44,0.78);
+    letter-spacing: 0.2px;
+}
+
+.writing-form textarea,
+.writing-form .save-button {
+    width: 100%;
+}
+
+.writing-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.footer-doodle {
+    margin: 30px auto 20px;
+    text-align: center;
+    color: rgba(20,48,44,0.8);
+    font-weight: 700;
+    font-family: 'Permanent Marker', 'Luckiest Guy', cursive;
+    letter-spacing: 0.3px;
+}
+
+.footer-line {
+    display: inline-block;
+    padding: 8px 14px;
+    border: 3px solid var(--primary);
+    border-radius: 12px;
+    box-shadow: 6px 6px 0 var(--shadow-color);
+    background: #fffdf6;
 }
 
 /* Heading styling */
@@ -187,6 +495,42 @@ body.light-theme .save-button:hover {
     margin: 0;
 }
 
+.stash-container {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 24px;
+}
+
+.stash-sidebar {
+    background: linear-gradient(180deg, #fffefc, #fff9f2);
+    border: 2px solid rgba(0,0,0,0.05);
+    border-radius: 14px;
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.04);
+    padding: 18px 16px;
+    text-align: left;
+}
+
+.filter-section { margin-bottom: 16px; }
+.filter-section h4 { margin: 0 0 8px 0; font-family: 'Luckiest Guy', 'Permanent Marker', cursive; font-size: 17px; }
+.filter-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.filter-link { text-decoration: none; color: var(--text-color); font-weight: 600; padding: 6px 10px; border-radius: 10px; display: inline-block; }
+.filter-link.active { background: #fff4e4; border: 2px solid rgba(0,0,0,0.06); box-shadow: 3px 3px 0 rgba(0,0,0,0.04); }
+.search-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.search-form input { flex: 1; padding: 10px 12px; border-radius: 10px; border: 2px solid rgba(0,0,0,0.08); background: #fffefc; }
+
+.tag-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-button {
+    text-decoration: none;
+    background: #fffdfa;
+    color: var(--text-color);
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 2px solid rgba(0,0,0,0.06);
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.04);
+    font-weight: 700;
+}
+.tag-button.active { background: #f2f7ff; border-color: rgba(0,0,0,0.08); }
+
 /* Individual stash item */
 .stash-item {
     margin-bottom: 15px;
@@ -196,17 +540,138 @@ body.light-theme .save-button:hover {
 .stash-card {
     background-color: var(--card-background);
     color: var(--text-color);
-    padding: 15px 20px;
-    border-radius: 5px;
+    padding: 18px 20px;
+    border-radius: 12px;
     font-size: 18px;
     font-weight: 500;
     text-align: left;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 6px 6px 0 var(--shadow-color);
     transition: background-color 0.3s, transform 0.3s;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    border: 3px solid var(--primary);
+    gap: 16px;
 }
+
+/* Polaroid / taped look for stash cards */
+.polaroid {
+    background: linear-gradient(180deg, #fffefc, #fff8f0);
+    position: relative;
+    overflow: visible;
+}
+
+.polaroid::before,
+.polaroid::after {
+    content: '';
+    position: absolute;
+    width: 60px;
+    height: 18px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.9), rgba(240,240,240,0.9));
+    border-radius: 3px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    transform: rotate(-12deg);
+}
+.polaroid::after {
+    right: 18px;
+    left: auto;
+    top: -10px;
+    transform: rotate(10deg);
+}
+.polaroid::before {
+    left: 18px;
+    top: -10px;
+}
+
+/* Slight random tilt by index for playful layout */
+.stash-item:nth-child(odd) .polaroid { transform: rotate(-1.5deg); }
+.stash-item:nth-child(even) .polaroid { transform: rotate(1.2deg); }
+
+/* Polaroid tab for collection / label */
+.polaroid .stash-collection {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--primary), #ffd98a);
+    color: var(--text-color);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+    margin-left: 0;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.08);
+    border: 2px dashed rgba(0,0,0,0.08);
+}
+
+/* Handwritten captions for polaroids */
+.polaroid .stash-preview, .polaroid .stash-date { font-family: 'Permanent Marker', 'Luckiest Guy', cursive; }
+
+.stash-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stash-header { display: flex; align-items: center; gap: 10px; }
+.stash-title {
+    font-family: 'Luckiest Guy', 'Permanent Marker', cursive;
+    font-size: 18px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+.stash-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.stash-date {
+    font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    font-size: 13px;
+    letter-spacing: 0.2px;
+    padding: 6px 10px;
+    background: #fef3d7;
+    border: 2px dotted rgba(20,48,44,0.12);
+    border-radius: 10px;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.06);
+    color: var(--text-color);
+}
+.stash-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+
+/* Bulk actions bar pulled into main theme so it matches the stickers vibe */
+.bulk-actions-bar {
+    background-color: var(--card-background);
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    border: 2px dashed rgba(0,0,0,0.08);
+    box-shadow: 5px 5px 0 rgba(0,0,0,0.06);
+}
+
+.bulk-info { font-weight: 700; color: var(--text-color); }
+
+.bulk-buttons { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.bulk-select {
+    padding: 10px 12px;
+    border: 2px solid rgba(0,0,0,0.1);
+    border-radius: 10px;
+    background-color: var(--surface);
+    color: var(--text-color);
+    cursor: pointer;
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.05);
+}
+
+.btn.btn-secondary,
+.btn.btn-danger,
+.action-button,
+.btn-small,
+.btn-search {
+    border: 2px solid rgba(0,0,0,0.12);
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.06);
+    font-weight: 700;
+}
+
+.btn.btn-secondary { background: #f2f7ff; color: var(--text-color); }
+.btn.btn-secondary:hover { background: #e4eeff; }
+
+.btn.btn-danger { background: #ffb4b4; color: #3a1a1a; }
+.btn.btn-danger:hover { background: #ff9a9a; }
+
+.btn-search { background: #ffe6b3; color: var(--text-color); }
+.btn-search:hover { opacity: 0.95; }
 
 /* Hover effect on stash cards */
 .stash-card:hover {
@@ -281,6 +746,7 @@ body.light-theme .delete-button:hover {
         font-size: 24px;
     }
 
+    /* Mobile: reuse base stash-card but stack content */
     .stash-card {
         font-size: 16px;
         padding: 10px 15px;
@@ -305,3 +771,183 @@ body.light-theme .delete-button:hover {
     }
 }
 
+/* Button Styles */
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s, opacity 0.3s;
+    display: inline-block;
+    text-decoration: none;
+}
+
+.btn {
+    border: 3px solid var(--primary);
+    background: linear-gradient(180deg, var(--button-background), #ffdf9a);
+    color: var(--button-text);
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.08);
+}
+
+/* Playful hover bounce */
+.btn:hover {
+    transform: translateY(-3px) rotate(-1deg);
+}
+
+.btn-secondary {
+    background-color: var(--secondary);
+    color: var(--button-text);
+    border-color: var(--primary);
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-danger {
+    background-color: var(--accent);
+    color: var(--button-text);
+    border-color: var(--primary);
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+}
+
+.btn-search {
+    background-color: var(--button-background);
+    color: var(--button-text);
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.btn-search:hover {
+    opacity: 0.8;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 12px;
+    background-color: var(--button-background);
+    color: var(--button-text);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 10px;
+}
+
+.btn-small:hover {
+    opacity: 0.8;
+}
+
+/* Sticker-style tags */
+.tag-small {
+    display: inline-block;
+    background: linear-gradient(180deg, #fff, #fffbf0);
+    border: 2px solid rgba(0,0,0,0.08);
+    padding: 6px 8px;
+    margin-right: 6px;
+    border-radius: 12px;
+    font-size: 13px;
+    color: var(--text-color);
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.06);
+}
+
+/* ruled margins for notebook look */
+.container {
+    max-width: 1100px;
+    margin: 28px auto;
+    padding: 18px 24px;
+    background: transparent;
+}
+
+/* playground silhouette faint background on body */
+body.recess-theme {
+    background-image: linear-gradient(rgba(255,255,255,0.6), rgba(255,255,255,0.5)), repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0.00) 0px,
+      rgba(0,0,0,0.00) 26px,
+      rgba(30,42,43,0.03) 27px
+    );
+}
+
+/* taped corners more pronounced */
+.polaroid::before, .polaroid::after {
+    background: linear-gradient(90deg, rgba(255,255,255,0.95), rgba(245,245,245,0.95));
+    width: 70px;
+    height: 20px;
+}
+
+/* richer shadows and staples */
+.polaroid { box-shadow: 10px 10px 0 rgba(20,48,44,0.06); }
+.polaroid::marker { }
+
+/* Bulk Action Checkboxes */
+.stash-checkbox {
+    margin-right: 15px;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.stash-select {
+    cursor: pointer;
+    width: 22px;
+    height: 22px;
+    accent-color: var(--primary);
+    margin: 0;
+    padding: 0;
+    border: 2px solid var(--text-color);
+    border-radius: 4px;
+}
+
+/* small sticker crest in top-right of page */
+.navbar .nav-user::before {
+    content: '';
+}
+
+/* Filter badge refined */
+.filter-badge {
+    display: inline-flex;
+    align-items: center;
+    background: #fff7e0;
+    color: var(--text-color);
+    padding: 6px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.04);
+}
+
+.page-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.page-hero-text h1 { margin: 0 0 4px 0; }
+.page-sub { margin: 0; color: rgba(20,48,44,0.75); font-size: 15px; }
+
+.page-hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.filter-badges { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }
+
+/* Small playful animations */
+.stash-card:hover {
+    transform: translateY(-6px) scale(1.01);
+}
+
+.delete-button {
+    transition: transform 0.18s ease;
+}
+.delete-button:active {
+    transform: rotate(-6deg) translateY(2px);
+}

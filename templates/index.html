@@ -3,11 +3,19 @@
 {% block title %}Home - Ruff{% endblock %}
 
 {% block content %}
-    <h1>Your Writing Area</h1>
-    <form action="{{ url_for('main.stash') }}" method="POST" class="stash-form">
-        {{ form.hidden_tag() }}
-        {{ form.text(placeholder="Start writing...", value=saved_text) }}
-        {{ form.submit(class="save-button") }}
-    </form>
+    <div class="writing-hero polaroid">
+        <div class="writing-header">
+            <div class="hero-pill">✏️ Writing Area</div>
+            <div class="hero-sub">Capture a thought before recess ends.</div>
+        </div>
+        <form action="{{ url_for('main.stash') }}" method="POST" class="stash-form writing-form">
+            {{ form.hidden_tag() }}
+            {{ form.text(placeholder="Start writing...", value=saved_text) }}
+            <div class="writing-actions">
+                {{ form.submit(class="save-button") }}
+                <a href="{{ url_for('main.view_stashes') }}" class="action-button">View Stashes</a>
+            </div>
+        </form>
+    </div>
 {% endblock %}
 
