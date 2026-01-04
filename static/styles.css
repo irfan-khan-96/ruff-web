@@ -43,16 +43,16 @@ body.light-theme {
 
 /* Dark / night mode */
 body.dark-theme {
-    --background-color: #0d111a;
-    --text-color: #e6edf3;
-    --card-background: #111826;
-    --card-hover: #0f1a2a;
-    --button-background: #1b2535;
-    --button-text: #e2e8f0;
-    --border-color: #1c2430;
-    --shadow-color: rgba(0,0,0,0.28);
-    --flash-success: #22c55e;
-    --flash-error: #ef4444;
+    --background-color: #131822;   /* lighter base */
+    --text-color: #f7f9fc;         /* brighter text */
+    --card-background: #1f2633;    /* lighter cards */
+    --card-hover: #273041;         /* softer hover */
+    --button-background: #2b3647;  /* calmer buttons */
+    --button-text: #f7f9fc;
+    --border-color: #394355;       /* higher contrast border */
+    --shadow-color: rgba(0,0,0,0.18);
+    --flash-success: #5be38d;
+    --flash-error: #f58fb0;
 }
 
 /* General body styling */
@@ -128,14 +128,15 @@ body.recess-theme.dark-theme::before {
     color: var(--text-color);
 }
 
-.dark-theme .polaroid { background: linear-gradient(180deg, #121c2b, #0e1727); }
+.dark-theme .polaroid { background: linear-gradient(180deg, #212b3a, #1a2230); }
 
 .dark-theme .stash-card,
 .dark-theme .bulk-actions-bar,
 .dark-theme .empty-card,
 .dark-theme .writing-hero,
 .dark-theme .stash-sidebar {
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.12);
 }
 
 .dark-theme .tag-button,
@@ -145,21 +146,21 @@ body.recess-theme.dark-theme::before {
 }
 
 .dark-theme .stash-collection {
-    background: linear-gradient(135deg, #273449, #1c2434);
-    color: #e6edf3;
-    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(135deg, #253144, #1d2635);
+    color: #f8fbff;
+    border: 1px solid rgba(255,255,255,0.06);
 }
 
 .dark-theme .stash-date {
-    background: #101726;
-    border: 1px dotted rgba(255,255,255,0.1);
-    color: #e6edf3;
-    box-shadow: 1px 1px 0 rgba(0,0,0,0.35);
+    background: #1a2331;
+    border: 1px dotted rgba(255,255,255,0.08);
+    color: #f7f9fc;
+    box-shadow: 1px 1px 0 rgba(0,0,0,0.18);
 }
 
 .dark-theme .navbar {
-    background: linear-gradient(90deg, rgba(44,54,73,0.6), rgba(14,20,35,0.75));
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(90deg, rgba(30,38,52,0.82), rgba(20,26,38,0.9));
+    border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
 .dark-theme .footer-line {
