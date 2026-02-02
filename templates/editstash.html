@@ -7,6 +7,8 @@
     <form action="{{ url_for('main.edit_stash', stash_id=stash.id) }}" method="POST" class="edit-form">
         {{ form.hidden_tag() }}
         <textarea name="text" required>{{ form.text.data }}</textarea>
+        <input type="hidden" name="collection" value="{{ form.collection.data if form.collection.data is not none else -1 }}">
+        <input type="hidden" name="tags" value="{{ form.tags.data or '' }}">
         <button type="submit" class="save-button">Update</button>
     </form>
     <div class="stash-actions">

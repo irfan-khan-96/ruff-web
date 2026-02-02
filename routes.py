@@ -289,7 +289,8 @@ def edit_stash(stash_id):
                     stash.collection_id = None
                 
                 # Update tags
-                stash.tags.clear()
+                for tag in stash.tags.all():
+                    stash.tags.remove(tag)
                 if form.tags.data:
                     tags = [tag.strip().lower() for tag in form.tags.data.split(',') if tag.strip()]
                     for tag_name in tags:
@@ -316,10 +317,11 @@ def edit_stash(stash_id):
 
 
 @bp.route("/stashes/<stash_id>/delete", methods=["POST"])
+@login_required
 def delete_stash(stash_id):
     """Handle stash deletion."""
     try:
-        stash = Stash.query.get(stash_id)
+        stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first()
         
         if stash is None:
             logger.warning(f"Stash not found for deletion: {stash_id}")
@@ -339,10 +341,11 @@ def delete_stash(stash_id):
 
 # Collection Routes
 @bp.route("/collections")
+@login_required
 def view_collections():
     """Display all collections."""
     try:
-        collections = Collection.query.all()
+        collections = Collection.query.filter_by(user_id=g.user.id).all()
         return render_template("collections.html", collections=[c.to_dict() for c in collections])
     except Exception as e:
         logger.error(f"Error loading collections: {str(e)}")
@@ -351,18 +354,20 @@ def view_collections():
 
 
 @bp.route("/collections/new", methods=["GET", "POST"])
+@login_required
 def create_collection():
     """Create a new collection."""
     form = CollectionForm()
     if form.validate_on_submit():
         try:
             # Check if collection name already exists
-            existing = Collection.query.filter_by(name=form.name.data).first()
+            existing = Collection.query.filter_by(name=form.name.data, user_id=g.user.id).first()
             if existing:
                 flash("A collection with this name already exists.", "error")
                 return redirect(url_for("main.create_collection"))
             
             new_collection = Collection(
+                user_id=g.user.id,
                 name=form.name.data,
                 description=form.description.data or None
             )
@@ -381,10 +386,11 @@ def create_collection():
 
 
 @bp.route("/collections/<int:collection_id>/delete", methods=["POST"])
+@login_required
 def delete_collection(collection_id):
     """Delete a collection."""
     try:
-        collection = Collection.query.get(collection_id)
+        collection = Collection.query.filter_by(id=collection_id, user_id=g.user.id).first()
         
         if collection is None:
             flash("Collection not found.", "error")
@@ -407,10 +413,16 @@ def delete_collection(collection_id):
 
 # Tag Routes
 @bp.route("/tags")
+@login_required
 def view_tags():
     """Display all tags."""
     try:
-        tags = Tag.query.all()
+        tags = (
+            Tag.query.join(Tag.stashes)
+            .filter(Stash.user_id == g.user.id)
+            .distinct()
+            .all()
+        )
         return render_template("tags.html", tags=[t.to_dict() for t in tags])
     except Exception as e:
         logger.error(f"Error loading tags: {str(e)}")
@@ -419,6 +431,7 @@ def view_tags():
 
 
 @bp.route("/tags/<int:tag_id>/delete", methods=["POST"])
+@login_required
 def delete_tag(tag_id):
     """Delete a tag."""
     try:
@@ -427,11 +440,31 @@ def delete_tag(tag_id):
         if tag is None:
             flash("Tag not found.", "error")
         else:
-            tag_name = tag.name
-            db.session.delete(tag)
+            # Only allow tag removal for stashes owned by current user
+            user_stashes = (
+                Stash.query.join(Stash.tags)
+                .filter(Tag.id == tag_id, Stash.user_id == g.user.id)
+                .all()
+            )
+
+            if not user_stashes:
+                flash("Tag not found or access denied.", "error")
+                return redirect(url_for("main.view_tags"))
+
+            for stash in user_stashes:
+                stash.remove_tag(tag)
+
+            # Delete the tag only if it's no longer used by any stash
+            if tag.stashes.count() == 0:
+                tag_name = tag.name
+                db.session.delete(tag)
+                flash(f"Tag '{tag_name}' deleted successfully!", "success")
+                logger.info(f"Tag deleted: {tag_id}")
+            else:
+                flash("Tag removed from your stashes.", "success")
+                logger.info(f"Tag removed from user stashes: {tag_id}")
+
             db.session.commit()
-            flash(f"Tag '{tag_name}' deleted successfully!", "success")
-            logger.info(f"Tag deleted: {tag_id}")
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error deleting tag {tag_id}: {str(e)}")

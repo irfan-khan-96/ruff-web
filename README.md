@@ -120,6 +120,19 @@ The application uses environment-based configuration. See `config.py` for availa
 - **CSRF Protection**: All forms are protected with CSRF tokens
 - **Input Validation**: WTForms validators ensure data integrity
 - **Session Security**: Secure session handling with Flask
+
+## Production Readiness Checklist
+
+Before deploying to production, ensure the following are complete:
+
+- **Secrets**: Set `SECRET_KEY` to a strong random value (no defaults).
+- **Database**: Set `DATABASE_URL` to a managed database (PostgreSQL recommended).
+- **Migrations**: Run Alembic migrations as part of deploy (schema is not auto-created).
+- **Debug**: Ensure debug is disabled (`FLASK_ENV=production`).
+- **App Server**: Use Gunicorn (see [Procfile](Procfile) and [Dockerfile](Dockerfile)).
+- **AuthZ**: Mutating routes require login and enforce ownership checks.
+- **Logging**: Collect `logs/ruff.log` (or stdout in container deployments).
+- **Health Checks**: Configure `/healthz` and `/readyz` in your load balancer.
 - **Environment Secrets**: Sensitive configuration via environment variables
 
 ## Development
