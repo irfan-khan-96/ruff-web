@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Nearby Share - Ruff{% endblock %}
+
+{% block content %}
+<div class="share-page polaroid">
+    <div class="page-hero">
+        <div class="page-hero-text">
+            <h1>Nearby Share</h1>
+            <p class="page-sub">Send stashes directly to another Ruff user with a one-time code.</p>
+        </div>
+    </div>
+
+    <div class="share-grid">
+        <section class="share-panel">
+            <h2>Send</h2>
+            <p class="share-help">Generate a code and send a stash over a direct connection.</p>
+            <div class="share-actions">
+                <button id="start-share" class="btn btn-secondary">Start sharing</button>
+                <div id="share-code" class="share-code" aria-live="polite">Code: —</div>
+            </div>
+            <div id="share-status" class="share-status">Waiting to start…</div>
+        </section>
+
+        <section class="share-panel">
+            <h2>Receive</h2>
+            <p class="share-help">Enter a code from another user to receive a stash.</p>
+            <div class="share-actions">
+                <input id="receive-code" class="share-input" placeholder="Enter code" />
+                <button id="join-share" class="btn">Join</button>
+            </div>
+            <div id="receive-status" class="share-status">Not connected.</div>
+        </section>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    window.RUFF_SHARE = {
+        stashId: {{ stash.id|tojson if stash else 'null' }},
+        csrfToken: "{{ csrf_token() }}",
+        payloadUrl: {{ url_for('main.share_payload', stash_id=stash.id) | tojson if stash else 'null' }},
+        importUrl: {{ url_for('main.import_shared_stash') | tojson }}
+    };
+</script>
+<script src="{{ url_for('static', filename='share.js') }}"></script>
+{% endblock %}

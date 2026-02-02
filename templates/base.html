@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Ruff App{% endblock %}</title>
+    <meta name="theme-color" content="#FFB02E">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/mascot.svg') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='images/mascot.svg') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/mascot.svg') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Permanent+Marker&family=Rubik:wght@300;400;500;700&display=swap" rel="stylesheet">
 </head>
@@ -25,6 +28,7 @@
                     <li class="nav-dropdown">
                         <a href="#" class="nav-link dropdown-toggle">⚙️ More</a>
                         <ul class="dropdown-menu">
+                            <li><a href="{{ url_for('main.share') }}" class="dropdown-link">📡 Nearby Share</a></li>
                             <li><a href="{{ url_for('main.export_data') }}" class="dropdown-link">⬇️ Export All</a></li>
                             <li><a href="{{ url_for('main.import_data') }}" class="dropdown-link">⬆️ Import</a></li>
                         </ul>

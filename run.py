@@ -8,6 +8,7 @@ import os
 import socket
 from dotenv import load_dotenv
 from app import create_app
+from sockets import socketio
 
 
 def find_free_port(start_port=5000, max_attempts=10):
@@ -36,7 +37,8 @@ if __name__ == "__main__":
     
     # Run the application
     print(f"Starting Ruff app on http://127.0.0.1:{port}")
-    app.run(
+    socketio.run(
+        app,
         host="127.0.0.1",
         port=port,
         debug=app.config.get("DEBUG", False),

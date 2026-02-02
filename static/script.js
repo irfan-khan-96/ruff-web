@@ -19,5 +19,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const next = document.body.classList.contains('dark-theme') ? 'light' : 'dark';
         applyTheme(next);
     });
+
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
+            // Silent fail for unsupported environments
+        });
+    }
 });
 

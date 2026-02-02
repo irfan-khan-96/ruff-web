@@ -1,0 +1,16 @@
+{
+  "name": "Ruff",
+  "short_name": "Ruff",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFDF6",
+  "theme_color": "#FFB02E",
+  "icons": [
+    {
+      "src": "/static/images/mascot.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

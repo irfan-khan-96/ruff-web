@@ -5,7 +5,7 @@ Route handlers for the Ruff application.
 import uuid
 import logging
 from functools import wraps
-from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, g, send_file
+from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, g, send_file, send_from_directory
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import or_, text
 from io import BytesIO
@@ -38,6 +38,12 @@ def readyz():
     except Exception as e:
         logger.error(f"Readiness check failed: {e}")
         return {"status": "error", "reason": str(e)}, 503
+
+
+@bp.route("/sw.js")
+def service_worker():
+    """Serve the service worker at the app root."""
+    return send_from_directory(current_app.static_folder, "sw.js")
 
 
 def login_required(f):
@@ -527,6 +533,69 @@ def export_stash(stash_id):
         logger.error(f"Error exporting stash: {str(e)}")
         flash("Failed to export stash. Please try again.", "error")
         return redirect(url_for("main.view_stashes"))
+
+
+# ============================================================================
+# Nearby Share Routes (WebRTC data channel)
+# ============================================================================
+
+@bp.route("/share")
+@login_required
+def share():
+    """Render the nearby share page."""
+    return render_template("share.html", stash=None)
+
+
+@bp.route("/share/<stash_id>")
+@login_required
+def share_stash(stash_id):
+    """Render the nearby share page for a specific stash."""
+    stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+    return render_template("share.html", stash=stash.to_dict())
+
+
+@bp.route("/share/payload/<stash_id>")
+@login_required
+def share_payload(stash_id):
+    """Provide stash payload for nearby sharing."""
+    stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+    return {
+        "id": stash.id,
+        "text": stash.text,
+        "tags": [tag.name for tag in stash.tags.all()],
+        "collection": stash.collection.name if stash.collection else None,
+    }, 200
+
+
+@bp.route("/share/import", methods=["POST"])
+@login_required
+def import_shared_stash():
+    """Import a shared stash payload into the current user's account."""
+    try:
+        data = request.get_json() or {}
+        text = (data.get("text") or "").strip()
+
+        if not text:
+            return {"error": "Missing text"}, 400
+
+        new_stash = Stash(
+            text=text,
+            user_id=g.user.id,
+            collection_id=None,
+        )
+        db.session.add(new_stash)
+        db.session.flush()
+
+        for tag_name in data.get("tags", []) or []:
+            new_stash.add_tag(tag_name)
+
+        db.session.commit()
+        logger.info(f"Shared stash imported for user {g.user.username}: {new_stash.id}")
+        return {"success": True, "id": new_stash.id}, 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error importing shared stash: {str(e)}")
+        return {"error": str(e)}, 500
 
 
 @bp.route("/import", methods=["GET", "POST"])

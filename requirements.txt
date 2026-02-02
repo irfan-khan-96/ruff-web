@@ -10,6 +10,7 @@ email-validator==2.3.0
 # Database
 Flask-SQLAlchemy==3.0.5
 SQLAlchemy==2.0.23
+Flask-SocketIO==5.3.6
 
 # Environment Configuration
 python-dotenv==1.0.0

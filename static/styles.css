@@ -427,6 +427,55 @@ body.recess-theme::after {
     margin: 12px 0 6px;
 }
 
+/* Nearby Share */
+.share-page {
+    padding: 20px 24px;
+}
+
+.share-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 18px;
+    margin-top: 12px;
+}
+
+.share-panel {
+    background: var(--card-background);
+    border: 2px solid rgba(0,0,0,0.06);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.05);
+}
+
+.share-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.share-code {
+    font-weight: 800;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: #fff4e4;
+    border: 2px dashed rgba(0,0,0,0.08);
+}
+
+.share-input {
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 2px solid rgba(0,0,0,0.08);
+    background: #fffefc;
+    flex: 1 1 auto;
+}
+
+.share-status {
+    margin-top: 10px;
+    font-size: 14px;
+    color: rgba(20,48,44,0.75);
+}
+
 .footer-doodle {
     margin: 30px auto 20px;
     text-align: center;

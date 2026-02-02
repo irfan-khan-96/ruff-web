@@ -12,6 +12,7 @@ import uuid
 from flask import Flask, render_template, g, request, has_request_context
 
 from config import get_config
+from sockets import init_socketio
 from routes import bp, csrf
 from models import db
 
@@ -40,6 +41,9 @@ def create_app(config_name: str = None) -> Flask:
     
     # Register blueprints
     app.register_blueprint(bp)
+
+    # Initialize Socket.IO for nearby sharing
+    init_socketio(app)
     
     # Request ID + structured logging context
     @app.before_request
