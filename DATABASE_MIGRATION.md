@@ -4,7 +4,7 @@
 
 ### 1. **Database Models** (`models.py`)
 - Created `Stash` model with SQLAlchemy
-- Fields: id, text, preview, created_at, updated_at
+- Fields: id, title, body, checklist, preview, created_at, updated_at
 - Includes `to_dict()` method for easy serialization
 
 ### 2. **Configuration Updates** (`config.py`)
@@ -14,8 +14,8 @@
 
 ### 3. **Application Factory** (`app.py`)
 - Integrated Flask-SQLAlchemy
-- Auto-creates tables on startup with `db.create_all()`
-- Database initialization happens automatically
+- Uses Alembic migrations for schema management
+- Database initialization happens via migrations or `init_db.py`
 
 ### 4. **Route Updates** (`routes.py`)
 - Migrated all routes from session storage to database
@@ -23,10 +23,9 @@
 - Proper error handling with transaction rollback
 
 ### 5. **Database Utilities** (`init_db.py`)
-- `python init_db.py init` - Initialize fresh database
+- `python init_db.py init` - Initialize fresh database (development)
 - `python init_db.py stats` - Show database statistics
 - `python init_db.py clear` - Clear all data (with confirmation)
-- `python init_db.py migrate` - Migrate from session (future use)
 
 ### 6. **Dependencies** (`requirements.txt`)
 - Added Flask-SQLAlchemy==3.0.5
@@ -43,8 +42,10 @@
 ```
 Stash Table:
 ├── id (String, Primary Key) - UUID
-├── text (Text) - Stash content
-├── preview (String) - First 50 chars
+├── title (String) - Optional title
+├── body (Text) - Stash content
+├── checklist (Text) - JSON checklist items
+├── preview (String) - First 100 chars of body
 ├── created_at (DateTime) - Creation timestamp
 └── updated_at (DateTime) - Last modified timestamp
 ```
@@ -53,9 +54,14 @@ Stash Table:
 
 ## 🚀 Usage
 
-### Initialize Database
+### Initialize Database (Development)
 ```bash
 python init_db.py init
+```
+
+### Initialize Database (Alembic)
+```bash
+alembic upgrade head
 ```
 
 ### View Database Statistics
@@ -89,7 +95,7 @@ The database is automatically initialized when the app starts.
 
 ## 🗄️ Database Location
 
-- **Development**: `instance/ruff.db` (SQLite)
+- **Development**: `ruff.db` (SQLite, project root)
 - **Production**: Configure via `DATABASE_URL` environment variable
 
 ---
@@ -134,7 +140,7 @@ with app.app_context():
     # Create a new stash
     new_stash = Stash(
         id="test-id",
-        text="Test content",
+        body="Test content",
         preview="Test content"
     )
     db.session.add(new_stash)

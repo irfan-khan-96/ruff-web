@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}{{ relay.title }} - Recess Relay{% endblock %}
+
+{% block content %}
+<div class="relay-page polaroid">
+    <div class="page-hero">
+        <div class="page-hero-text">
+            <h1>{{ relay.title }}</h1>
+            <p class="page-sub">Code: <span class="relay-code">{{ relay.code }}</span> · {{ entry_count }}/{{ relay.max_entries }} lines</p>
+        </div>
+        <div class="page-hero-actions">
+            {% if is_owner and not relay.is_closed %}
+            <form method="POST" action="{{ url_for('main.relay_close', code=relay.code) }}">
+                {{ csrf_token() }}
+                <button type="submit" class="btn btn-danger">Close Relay</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="relay-grid">
+        <section class="relay-card relay-board">
+            {% if relay.prompt %}
+            <div class="relay-prompt">
+                <div class="relay-prompt-title">Starter Prompt</div>
+                <p>{{ relay.prompt }}</p>
+            </div>
+            {% endif %}
+
+            <ol class="relay-list">
+                {% for entry in entries %}
+                <li class="relay-entry">
+                    <div class="relay-entry-head">
+                        <span class="relay-author">{{ entry.author_name }}</span>
+                        <span class="relay-entry-index">#{{ entry.position }}</span>
+                    </div>
+                    <p>{{ entry.body }}</p>
+                </li>
+                {% endfor %}
+            </ol>
+            {% if entries|length == 0 %}
+            <div class="relay-empty">No lines yet — be the first to pass the note.</div>
+            {% endif %}
+        </section>
+
+        <section class="relay-card relay-action">
+            <h2>Pass the Note</h2>
+            {% if relay.is_closed %}
+            <p class="relay-help">This relay is closed.</p>
+            {% elif not can_add %}
+            <p class="relay-help">Relay is full. Start another to keep it going.</p>
+            {% else %}
+            <form method="POST" action="{{ url_for('main.relay_add', code=relay.code) }}" class="relay-form">
+                {{ csrf_token() }}
+                {% if not g.user %}
+                <label class="relay-label" for="relay-author">Your name</label>
+                <input id="relay-author" name="author_name" class="relay-input" placeholder="Guest" maxlength="80">
+                {% endif %}
+                <label class="relay-label" for="relay-body">Your line</label>
+                <textarea id="relay-body" name="body" class="relay-textarea" rows="4" placeholder="Add one line to the relay..." maxlength="240"></textarea>
+                <button type="submit" class="btn">Pass it on</button>
+            </form>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

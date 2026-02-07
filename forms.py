@@ -3,10 +3,11 @@ Flask-WTF forms for the Ruff application.
 """
 
 from flask_wtf import FlaskForm
-from wtforms import TextAreaField, SubmitField, StringField, SelectField, SelectMultipleField, PasswordField
+from wtforms import TextAreaField, SubmitField, StringField, SelectField, PasswordField, BooleanField, HiddenField
 from wtforms.validators import DataRequired, Length, Optional, ValidationError, Email, EqualTo
 from config import get_config
 from models import User
+from sqlalchemy import func
 
 config = get_config()
 
@@ -14,47 +15,65 @@ config = get_config()
 class StashForm(FlaskForm):
     """Form for creating a new stash."""
 
-    text = TextAreaField(
-        "Your Text",
+    title = StringField(
+        "Title",
         validators=[
-            DataRequired(message="Please enter some text."),
+            Optional(),
+            Length(max=200, message="Title must be 200 characters or less."),
+        ],
+        render_kw={"placeholder": "Give it a title (optional)"}
+    )
+    body = TextAreaField(
+        "Body",
+        validators=[
+            DataRequired(message="Please enter some content."),
             Length(
                 min=1,
                 max=config.MAX_STASH_LENGTH,
-                message=f"Text must be between 1 and {config.MAX_STASH_LENGTH} characters.",
+                message=f"Body must be between 1 and {config.MAX_STASH_LENGTH} characters.",
             ),
         ],
     )
+    checklist = HiddenField()
     collection = SelectField("Collection", coerce=int, validators=[Optional()])
     tags = StringField(
         "Tags",
         validators=[Optional()],
         render_kw={"placeholder": "Add tags separated by commas (e.g., python, web, tutorial)"}
     )
-    submit = SubmitField("Save")
+    submit = SubmitField("Stash It")
 
 
 class EditStashForm(FlaskForm):
     """Form for editing an existing stash."""
 
-    text = TextAreaField(
-        "Edit Text",
+    title = StringField(
+        "Title",
         validators=[
-            DataRequired(message="Please enter some text."),
+            Optional(),
+            Length(max=200, message="Title must be 200 characters or less."),
+        ],
+        render_kw={"placeholder": "Give it a title (optional)"}
+    )
+    body = TextAreaField(
+        "Body",
+        validators=[
+            DataRequired(message="Please enter some content."),
             Length(
                 min=1,
                 max=config.MAX_STASH_LENGTH,
-                message=f"Text must be between 1 and {config.MAX_STASH_LENGTH} characters.",
+                message=f"Body must be between 1 and {config.MAX_STASH_LENGTH} characters.",
             ),
         ],
     )
+    checklist = HiddenField()
     collection = SelectField("Collection", coerce=int, validators=[Optional()])
     tags = StringField(
         "Tags",
         validators=[Optional()],
         render_kw={"placeholder": "Add tags separated by commas (e.g., python, web, tutorial)"}
     )
-    submit = SubmitField("Update")
+    submit = SubmitField("Update Stash")
 
 
 class CollectionForm(FlaskForm):
@@ -75,19 +94,6 @@ class CollectionForm(FlaskForm):
     submit = SubmitField("Create Collection")
 
 
-class SearchForm(FlaskForm):
-    """Form for searching stashes."""
-    
-    query = StringField(
-        "Search",
-        validators=[Optional()],
-        render_kw={"placeholder": "Search stashes..."}
-    )
-    collection = SelectField("Collection", coerce=int, validators=[Optional()])
-    tag = SelectField("Tag", coerce=int, validators=[Optional()])
-    submit = SubmitField("Search")
-
-
 class LoginForm(FlaskForm):
     """Form for user login."""
 
@@ -99,6 +105,7 @@ class LoginForm(FlaskForm):
         "Password",
         validators=[DataRequired(message="Password is required.")]
     )
+    remember = BooleanField("Remember me")
     submit = SubmitField("Login")
 
 
@@ -142,5 +149,52 @@ class SignupForm(FlaskForm):
     
     def validate_email(self, field):
         """Check if email is already registered."""
-        if User.query.filter_by(email=field.data).first():
+        email = field.data.strip().lower()
+        if User.query.filter(func.lower(User.email) == email).first():
             raise ValidationError("Email already registered.")
+
+
+class ResendVerificationForm(FlaskForm):
+    """Form to resend email verification."""
+
+    email = StringField(
+        "Email",
+        validators=[
+            DataRequired(message="Email is required."),
+            Email(message="Invalid email address.")
+        ]
+    )
+    submit = SubmitField("Resend Verification Email")
+
+
+class ForgotPasswordForm(FlaskForm):
+    """Form to request a password reset."""
+
+    email = StringField(
+        "Email",
+        validators=[
+            DataRequired(message="Email is required."),
+            Email(message="Invalid email address.")
+        ]
+    )
+    submit = SubmitField("Send Reset Link")
+
+
+class ResetPasswordForm(FlaskForm):
+    """Form to reset password."""
+
+    password = PasswordField(
+        "New Password",
+        validators=[
+            DataRequired(message="Password is required."),
+            Length(min=6, message="Password must be at least 6 characters.")
+        ]
+    )
+    confirm_password = PasswordField(
+        "Confirm Password",
+        validators=[
+            DataRequired(message="Please confirm your password."),
+            EqualTo("password", message="Passwords must match.")
+        ]
+    )
+    submit = SubmitField("Reset Password")

@@ -1,190 +1,100 @@
-# Ruff - Text Stashing Application
+# Ruff
 
-A simple, elegant Flask-based application for saving, organizing, and managing text snippets.
+Ruff is a Flask app for stashing notes with titles, body text, and a task note.
 
 ## Features
+- Titles + body stashes with previews
+- Task notes (checklists) attached to stashes
+- Tags and collections
+- Import/export (JSON + text)
+- Nearby Share (WebRTC + Socket.IO)
+- Email verification and password reset
+- Light/dark themes and PWA support
+- CSRF protection, rate limiting, health checks
 
-- 💾 **Quick Stash**: Save text snippets instantly
-- 📝 **Edit & Update**: Modify your stashes anytime
-- 🗂️ **Organize**: View all your stashes in one place
-- 🌙 **Dark/Light Theme**: Toggle between themes
-- 🛡️ **CSRF Protection**: Secure form handling
-- 📱 **Responsive Design**: Works on all devices
-
-## Project Structure
-
-```
-ruff-web/
-├── app.py              # Application factory and initialization
-├── config.py           # Configuration management
-├── forms.py            # WTForms definitions
-├── routes.py           # Route handlers and blueprints
-├── utils.py            # Helper functions and utilities
-├── run.py              # Entry point to start the server
-├── requirements.txt    # Python dependencies
-├── .env                # Environment variables (local)
-├── .env.example        # Environment variables template
-├── .gitignore          # Git ignore rules
-├── static/             # CSS, JavaScript, images
-│   ├── styles.css
-│   └── script.js
-├── templates/          # HTML templates
-│   ├── base.html
-│   ├── index.html
-│   ├── stashes.html
-│   ├── viewstash.html
-│   ├── editstash.html
-│   └── errors/         # Error pages
-│       ├── 400.html
-│       ├── 404.html
-│       └── 500.html
-└── logs/               # Application logs (created at runtime)
-```
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.8+
-- pip or conda
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   cd ruff-web
-   ```
-
-2. **Create a virtual environment**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env and set SECRET_KEY to a secure value (optional for development)
-   ```
-
-5. **Run the application**
-   ```bash
-   python run.py
-   ```
-
-6. **Access the app**
-   - Open your browser to `http://localhost:5000`
-
-### Generate a Secure Secret Key
-
-For production, generate a secure secret key:
-
+## Quickstart
+1. Create and activate a virtual environment:
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -m venv venv
+source venv/bin/activate
 ```
-
-Add it to your `.env` file:
-```
-SECRET_KEY=your-generated-key-here
-```
-
-## Configuration
-
-The application uses environment-based configuration. See `config.py` for available settings:
-
-- `FLASK_ENV`: Environment mode (development, production, testing)
-- `SECRET_KEY`: Secret key for session encryption
-- `DEBUG`: Enable/disable debug mode
-- `MAX_STASH_LENGTH`: Maximum characters per stash (default: 50,000)
-- `PREVIEW_LENGTH`: Characters to show in preview (default: 50)
-
-## Architecture
-
-### Modern Development Practices
-
-- **Separation of Concerns**: Routes, forms, configuration, and utilities are separated into modules
-- **Application Factory Pattern**: `create_app()` function for flexible app instantiation
-- **Configuration Management**: Environment-based config with sensible defaults
-- **Logging**: Rotating file logs with console output
-- **Error Handling**: Custom error handlers for 400, 404, and 500 errors
-- **Type Hints**: Functions include type annotations for better IDE support
-- **Documentation**: Docstrings for all functions and modules
-
-### Security Features
-
-- **CSRF Protection**: All forms are protected with CSRF tokens
-- **Input Validation**: WTForms validators ensure data integrity
-- **Session Security**: Secure session handling with Flask
-
-## Production Readiness Checklist
-
-Before deploying to production, ensure the following are complete:
-
-- **Secrets**: Set `SECRET_KEY` to a strong random value (no defaults).
-- **Database**: Set `DATABASE_URL` to a managed database (PostgreSQL recommended).
-- **Migrations**: Run Alembic migrations as part of deploy (schema is not auto-created).
-- **Debug**: Ensure debug is disabled (`FLASK_ENV=production`).
-- **App Server**: Use Gunicorn (see [Procfile](Procfile) and [Dockerfile](Dockerfile)).
-- **AuthZ**: Mutating routes require login and enforce ownership checks.
-- **Logging**: Collect `logs/ruff.log` (or stdout in container deployments).
-- **Health Checks**: Configure `/healthz` and `/readyz` in your load balancer.
-- **Environment Secrets**: Sensitive configuration via environment variables
-
-## Development
-
-### Running in Development Mode
-
+2. Install dependencies:
 ```bash
-export FLASK_ENV=development
+pip install -r requirements.txt
+```
+3. Configure environment:
+```bash
+cp .env.example .env
+```
+Edit `.env` and set `SECRET_KEY` and `SECURITY_PASSWORD_SALT`.
+4. Initialize the database:
+```bash
+alembic upgrade head
+```
+For a fresh dev-only database without migrations:
+```bash
+python init_db.py init
+```
+5. Run the app:
+```bash
 python run.py
 ```
+6. Open `http://localhost:5000` in the browser.
 
-The app will run with debug mode enabled and auto-reload on file changes.
+## Configuration
+Key environment variables in `.env`:
+- `FLASK_ENV`: `development`, `testing`, or `production`
+- `DATABASE_URL`: defaults to `sqlite:///./ruff.db`
+- `SECRET_KEY`: session signing key
+- `SECURITY_PASSWORD_SALT`: token signing salt
+- `REQUIRE_EMAIL_VERIFICATION`: require email verification before login
+- `RATELIMIT_STORAGE_URL`: rate limiting backend (default `memory://`)
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
+- `SMTP_USE_TLS`, `SMTP_USE_SSL`
 
-### Checking Logs
-
-Logs are stored in the `logs/` directory:
-
+## Database
+SQLite is used by default. For PostgreSQL:
+1. Install the driver:
 ```bash
-tail -f logs/ruff.log
+pip install psycopg2-binary
+```
+2. Set `DATABASE_URL`:
+```
+DATABASE_URL=postgresql://user:password@localhost/ruff
+```
+3. Run migrations:
+```bash
+alembic upgrade head
 ```
 
-### Testing
-
-Set up test configuration in `.env`:
-
-```
-FLASK_ENV=testing
+## Testing
+```bash
+pytest -q
 ```
 
-## Future Enhancements
+## Stop and Clean
+1. Stop the dev server: press `Ctrl+C` in the terminal running `python run.py`.
+2. If the port is still busy:
+```bash
+lsof -i tcp:5000
+kill <PID>
+```
+3. Clean local artifacts and reset data:
+```bash
+rm -f logs/ruff.log
+find . -name "__pycache__" -type d -prune -exec rm -rf {} +
+rm -f ruff.db instance/ruff.db
+```
+4. Recreate the schema:
+```bash
+alembic upgrade head
+```
 
-- 🏷️ Tags and collections for organizing stashes
-- 🔍 Full-text search functionality
-- 👤 User authentication and accounts
-- 💾 Database persistence (SQLite/PostgreSQL)
-- 📤 Export stashes as PDF, Markdown, or JSON
-- 🎨 Custom theme editor
-- 🔒 Password-protected stashes
-- 📱 Mobile app (React Native)
-
-## Contributing
-
-Contributions are welcome! Please follow PEP 8 style guidelines and include:
-
-- Type hints
-- Docstrings
-- Unit tests for new features
+## Production Notes
+- Set strong `SECRET_KEY` and `SECURITY_PASSWORD_SALT` values.
+- Configure SMTP if email verification/reset is enabled.
+- Use a production WSGI server (example: `gunicorn`).
+- Run migrations during deploy: `alembic upgrade head`.
 
 ## License
-
-MIT License - feel free to use this project for personal or commercial purposes.
-
-## Support
-
-For issues or questions, please open an issue on the repository.
+MIT

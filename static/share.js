@@ -7,7 +7,7 @@
     const receiveCodeInput = document.getElementById("receive-code");
 
     const config = window.RUFF_SHARE || {};
-    const socket = io();
+    const socket = typeof io === "function" ? io() : null;
 
     let roomCode = null;
     let peerConnection = null;
@@ -16,11 +16,11 @@
     let payloadCache = null;
 
     function setShareStatus(text) {
-        shareStatus.textContent = text;
+        if (shareStatus) shareStatus.textContent = text;
     }
 
     function setReceiveStatus(text) {
-        receiveStatus.textContent = text;
+        if (receiveStatus) receiveStatus.textContent = text;
     }
 
     function generateCode() {
@@ -109,6 +109,14 @@
             throw new Error("Import failed");
         }
         return res.json();
+    }
+
+    if (!socket) {
+        setShareStatus("Nearby share is unavailable right now.");
+        setReceiveStatus("Nearby share is unavailable right now.");
+        startBtn?.setAttribute("disabled", "disabled");
+        joinBtn?.setAttribute("disabled", "disabled");
+        return;
     }
 
     socket.on("signal", async (payload) => {

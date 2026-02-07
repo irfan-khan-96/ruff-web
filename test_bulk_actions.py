@@ -12,13 +12,13 @@ class BulkActionsTestCase(unittest.TestCase):
         db.create_all()
         
         # Create a test user
-        self.user = User(username='testuser', email='test@example.com')
+        self.user = User(username='testuser', email='test@example.com', email_verified=True)
         self.user.set_password('password')
         db.session.add(self.user)
         db.session.commit()
         
         # Create another user
-        self.other_user = User(username='other', email='other@example.com')
+        self.other_user = User(username='other', email='other@example.com', email_verified=True)
         self.other_user.set_password('password')
         db.session.add(self.other_user)
         db.session.commit()
@@ -39,9 +39,9 @@ class BulkActionsTestCase(unittest.TestCase):
         self.login(client, 'testuser', 'password')
         
         # Create stashes
-        s1 = Stash(text="Stash 1", user_id=self.user.id)
-        s2 = Stash(text="Stash 2", user_id=self.user.id)
-        s3 = Stash(text="Stash 3", user_id=self.other_user.id) # Should not be deleted
+        s1 = Stash(body="Stash 1", user_id=self.user.id)
+        s2 = Stash(body="Stash 2", user_id=self.user.id)
+        s3 = Stash(body="Stash 3", user_id=self.other_user.id) # Should not be deleted
         db.session.add_all([s1, s2, s3])
         db.session.commit()
         
@@ -56,9 +56,9 @@ class BulkActionsTestCase(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data['deleted'], 2) # Should only delete 2
         
-        self.assertIsNone(Stash.query.get(s1.id))
-        self.assertIsNone(Stash.query.get(s2.id))
-        self.assertIsNotNone(Stash.query.get(s3.id))
+        self.assertIsNone(db.session.get(Stash, s1.id))
+        self.assertIsNone(db.session.get(Stash, s2.id))
+        self.assertIsNotNone(db.session.get(Stash, s3.id))
 
     def test_bulk_move(self):
         client = self.app.test_client()
@@ -69,8 +69,8 @@ class BulkActionsTestCase(unittest.TestCase):
         db.session.add(c1)
         db.session.commit()
         
-        s1 = Stash(text="Stash 1", user_id=self.user.id)
-        s2 = Stash(text="Stash 2", user_id=self.user.id)
+        s1 = Stash(body="Stash 1", user_id=self.user.id)
+        s2 = Stash(body="Stash 2", user_id=self.user.id)
         db.session.add_all([s1, s2])
         db.session.commit()
         

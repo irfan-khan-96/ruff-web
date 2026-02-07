@@ -13,7 +13,7 @@ from flask import Flask, render_template, g, request, has_request_context
 
 from config import get_config
 from sockets import init_socketio
-from routes import bp, csrf
+from routes import bp, csrf, limiter
 from models import db
 
 
@@ -38,6 +38,9 @@ def create_app(config_name: str = None) -> Flask:
     
     # Initialize CSRF protection
     csrf.init_app(app)
+
+    # Initialize rate limiter
+    limiter.init_app(app)
     
     # Register blueprints
     app.register_blueprint(bp)
@@ -81,7 +84,9 @@ def setup_logging(app: Flask) -> None:
     Args:
         app: Flask application instance
     """
-    logger = logging.getLogger(__name__)
+    root_logger = logging.getLogger()
+    if any(getattr(handler, "ruff_handler", False) for handler in root_logger.handlers):
+        return
     
     # Create logs directory if it doesn't exist
     logs_dir = os.path.join(os.path.dirname(__file__), "logs")
@@ -95,12 +100,14 @@ def setup_logging(app: Flask) -> None:
         backupCount=10,
     )
     file_handler.setLevel(logging.INFO)
+    file_handler.ruff_handler = True
     
     # Console handler for development
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG if app.debug else logging.INFO)
+    console_handler.ruff_handler = True
     
-    # Create formatter
+    # Create formatters
     class JsonFormatter(logging.Formatter):
         def format(self, record):
             payload = {
@@ -110,16 +117,29 @@ def setup_logging(app: Flask) -> None:
                 "request_id": getattr(record, "request_id", "-"),
                 "message": record.getMessage(),
             }
+            if record.exc_info:
+                payload["exc_info"] = self.formatException(record.exc_info)
             return json.dumps(payload)
 
-    formatter = JsonFormatter()
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
+    class ConsoleFormatter(logging.Formatter):
+        def format(self, record):
+            base = (
+                f"{self.formatTime(record, self.datefmt)} | "
+                f"{record.levelname:<7} | {record.name} | "
+                f"{getattr(record, 'request_id', '-')}"
+                f" | {record.getMessage()}"
+            )
+            if record.exc_info:
+                base += "\n" + self.formatException(record.exc_info)
+            return base
+
+    file_handler.setFormatter(JsonFormatter())
+    console_handler.setFormatter(ConsoleFormatter())
     
     # Add handlers to logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    logger.setLevel(logging.DEBUG if app.debug else logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    root_logger.setLevel(logging.DEBUG if app.debug else logging.INFO)
     
     # Inject request_id into log records
     class RequestIdFilter(logging.Filter):
@@ -160,4 +180,3 @@ def register_error_handlers(app: Flask) -> None:
         """Handle 400 errors."""
         logger.warning(f"400 error: {error}")
         return render_template("errors/400.html"), 400
-

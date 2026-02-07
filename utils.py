@@ -2,67 +2,35 @@
 Utility functions for the Ruff application.
 """
 
-from datetime import datetime
-from typing import Dict, Any
+from typing import Optional
+
+from flask import current_app
+
+DEFAULT_PREVIEW_LENGTH = 100
 
 
-def generate_stash_preview(text: str, preview_length: int = 50) -> str:
+def _get_preview_length(default: int = DEFAULT_PREVIEW_LENGTH) -> int:
+    """Read preview length from app config when available."""
+    try:
+        return int(current_app.config.get("PREVIEW_LENGTH", default))
+    except RuntimeError:
+        # No app context active
+        return default
+
+
+def generate_stash_preview(body: str, preview_length: Optional[int] = None) -> str:
     """
-    Generate a preview of stash text.
+    Generate a preview of stash body.
 
     Args:
-        text: The full stash text
-        preview_length: Maximum number of characters in preview
-        
-    Returns:
-        Preview string with ellipsis if text is longer than preview_length
-    """
-    if len(text) > preview_length:
-        return text[:preview_length] + "..."
-    return text
-
-
-def get_current_timestamp() -> str:
-    """
-    Get current timestamp in standardized format.
+        body: The full stash body
+        preview_length: Maximum number of characters in preview (optional)
 
     Returns:
-        Timestamp string in format 'YYYY-MM-DD HH:MM:SS'
+        Preview string with ellipsis if body is longer than preview_length
     """
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def create_stash_dict(stash_id: str, text: str) -> Dict[str, Any]:
-    """
-    Create a stash dictionary with all required fields.
-
-    Args:
-        stash_id: Unique identifier for the stash
-        text: The stash content
-        
-    Returns:
-        Dictionary containing stash data
-    """
-    return {
-        "id": stash_id,
-        "text": text,
-        "created_at": get_current_timestamp(),
-        "preview": generate_stash_preview(text),
-    }
-
-
-def sanitize_stash_data(stash: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Ensure stash has all required fields (for backward compatibility).
-
-    Args:
-        stash: Stash dictionary to sanitize
-        
-    Returns:
-        Stash dictionary with all required fields
-    """
-    if "preview" not in stash:
-        stash["preview"] = generate_stash_preview(stash.get("text", ""))
-    if "created_at" not in stash:
-        stash["created_at"] = "N/A"
-    return stash
+    if preview_length is None:
+        preview_length = _get_preview_length()
+    if len(body) > preview_length:
+        return body[:preview_length] + "..."
+    return body

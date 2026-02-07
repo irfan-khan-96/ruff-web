@@ -96,10 +96,16 @@
                             </div>
                             <div class="stash-info">
                                 <div class="stash-header">
-                                    <span class="stash-title">{{ stash.preview }}</span>
+                                    <span class="stash-title">{{ stash.title or stash.preview }}</span>
                                 </div>
+                                {% if stash.title %}
+                                <div class="stash-preview">{{ stash.preview }}</div>
+                                {% endif %}
                                 <div class="stash-meta">
                                     {% if stash.collection_name %}<span class="stash-collection">📁 {{ stash.collection_name }}</span>{% endif %}
+                                    {% if stash.checklist and stash.checklist|length > 0 %}
+                                    <span class="stash-checklist-count">✅ {{ stash.checklist|length }} items</span>
+                                    {% endif %}
                                     <span class="stash-date">Added {{ stash.created_at | replace(' ', ' · ', 1) }}</span>
                                 </div>
                                 {% if stash.tags %}

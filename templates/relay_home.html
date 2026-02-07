@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Recess Relay - Ruff{% endblock %}
+
+{% block content %}
+<div class="relay-page polaroid">
+    <div class="page-hero">
+        <div class="page-hero-text">
+            <h1>Recess Relay</h1>
+            <p class="page-sub">Pass a note around and build a stash together, one line at a time.</p>
+        </div>
+    </div>
+
+    <div class="relay-grid">
+        <section class="relay-card">
+            <h2>Start a Relay</h2>
+            <p class="relay-help">Kick off a relay with a prompt or a title.</p>
+            {% if g.user %}
+            <form method="POST" action="{{ url_for('main.relay_home') }}" class="relay-form">
+                {{ csrf_token() }}
+                <input type="hidden" name="action" value="start">
+                <label class="relay-label" for="relay-title">Title</label>
+                <input id="relay-title" name="title" class="relay-input" placeholder="Recess Relay" maxlength="200">
+                <label class="relay-label" for="relay-prompt">Starter prompt (optional)</label>
+                <textarea id="relay-prompt" name="prompt" class="relay-textarea" rows="4" placeholder="Set the scene or first line..."></textarea>
+                <label class="relay-label" for="relay-max">Max lines (3-20)</label>
+                <input id="relay-max" name="max_entries" class="relay-input" type="number" min="3" max="20" value="8">
+                <button type="submit" class="btn">Start Relay</button>
+            </form>
+            {% else %}
+            <div class="relay-empty">
+                <p>Login to start a relay.</p>
+                <a href="{{ url_for('main.login') }}" class="btn">Login</a>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="relay-card">
+            <h2>Join a Relay</h2>
+            <p class="relay-help">Have a code? Drop it in and join the chain.</p>
+            <form method="POST" action="{{ url_for('main.relay_home') }}" class="relay-form">
+                {{ csrf_token() }}
+                <input type="hidden" name="action" value="join">
+                <label class="relay-label" for="relay-code">Relay Code</label>
+                <input id="relay-code" name="code" class="relay-input" placeholder="ABC123" maxlength="8" autocomplete="off">
+                <button type="submit" class="btn btn-secondary">Join Relay</button>
+            </form>
+        </section>
+    </div>
+</div>
+{% endblock %}

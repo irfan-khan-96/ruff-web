@@ -4,6 +4,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from app import create_app
 from models import db
 

@@ -68,6 +68,18 @@ body, html {
     transition: background-color 0.24s ease, color 0.24s ease;
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* Softened notebook motif for a more polished feel */
 body.recess-theme {
     background-color: var(--background-color);
@@ -105,12 +117,22 @@ body.recess-theme.dark-theme::before {
 /* Dark theme component overrides */
 .dark-theme .stash-sidebar,
 .dark-theme .writing-hero,
+.dark-theme .writing-title,
+.dark-theme .stash-form textarea,
+.dark-theme .edit-form textarea,
 .dark-theme .bulk-actions-bar,
 .dark-theme .empty-card,
 .dark-theme .page-hero,
 .dark-theme .container,
 .dark-theme .stash-card,
 .dark-theme .polaroid,
+.dark-theme .checklist-item,
+.dark-theme .sticky-note,
+.dark-theme .relay-card,
+.dark-theme .relay-input,
+.dark-theme .relay-textarea,
+.dark-theme .relay-entry,
+.dark-theme .relay-prompt,
 .dark-theme .tag-button,
 .dark-theme .filter-badge,
 .dark-theme .page-hero-actions .btn,
@@ -156,6 +178,59 @@ body.recess-theme.dark-theme::before {
     border: 1px dotted rgba(255,255,255,0.08);
     color: #f7f9fc;
     box-shadow: 1px 1px 0 rgba(0,0,0,0.18);
+}
+
+.dark-theme .stash-checklist-count {
+    background: #1f2b3c;
+    border: 1px dotted rgba(255,255,255,0.1);
+    color: #f7f9fc;
+}
+
+.dark-theme .relay-code {
+    background: #1f2b3c;
+    border: 1px dashed rgba(255,255,255,0.12);
+    color: #f7f9fc;
+}
+
+.dark-theme .drag-handle {
+    color: rgba(247,249,252,0.6);
+}
+
+.dark-theme .sticky-note {
+    background: linear-gradient(180deg, #263041 0%, #1f2836 100%);
+    border-color: rgba(255,255,255,0.16);
+    box-shadow: 6px 6px 0 rgba(0,0,0,0.22);
+}
+
+.dark-theme .sticky-note::after {
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(255,255,255,0.05) 0px,
+        rgba(255,255,255,0.05) 1px,
+        transparent 1px,
+        transparent 26px
+    );
+}
+
+.dark-theme .sticky-note .checklist-item,
+.dark-theme .sticky-checklist li {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.18);
+}
+
+.dark-theme .sticky-hint {
+    color: rgba(247,249,252,0.7);
+}
+
+.dark-theme .paperclip,
+.dark-theme .paperclip::after {
+    border-color: #9aa5b1;
+}
+
+.dark-theme .paperclip-toggle,
+.dark-theme .paperclip-toggle::after {
+    border-color: #9aa5b1;
 }
 
 .dark-theme .navbar {
@@ -344,16 +419,18 @@ body.recess-theme::after {
 
 .writing-hero {
     margin: 32px auto;
-    padding: 26px 24px;
+    padding: 30px 28px;
     border-radius: 16px;
     border: 2px solid rgba(0,0,0,0.06);
     box-shadow: 8px 8px 0 rgba(0,0,0,0.05);
     background: linear-gradient(180deg, #fffefc, #fff9f2);
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 20px;
     position: relative;
-    overflow: hidden;
+    overflow: visible;
+    width: 100%;
+    max-width: 100%;
 }
 
 .writing-header {
@@ -384,6 +461,284 @@ body.recess-theme::after {
 .writing-form textarea,
 .writing-form .save-button {
     width: 100%;
+}
+
+.writing-title {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 2px solid rgba(0,0,0,0.08);
+    background: var(--card-background);
+    color: var(--text-color);
+    font-size: 18px;
+    font-weight: 600;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
+    box-sizing: border-box;
+}
+
+.writing-title::placeholder {
+    color: rgba(20,48,44,0.6);
+    font-weight: 500;
+}
+
+.writing-field {
+    width: 100%;
+}
+
+.stash-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(240px, 0.9fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.sticky-note {
+    position: relative;
+    padding: 18px 18px 22px;
+    border-radius: 14px;
+    border: 2px solid rgba(255,176,46,0.35);
+    background: linear-gradient(180deg, #fffdf5 0%, #fff3d4 100%);
+    box-shadow: 6px 6px 0 rgba(20,48,44,0.05);
+    min-height: 190px;
+    max-width: 300px;
+    justify-self: start;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sticky-note--floating {
+    position: absolute;
+    top: 36px;
+    right: 24px;
+    z-index: 3;
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+    pointer-events: none;
+    visibility: hidden;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.sticky-note--floating.is-open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+    visibility: visible;
+}
+
+.sticky-note::after {
+    content: '';
+    position: absolute;
+    inset: 12px 12px 12px 12px;
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(20,48,44,0.04) 0px,
+        rgba(20,48,44,0.04) 1px,
+        transparent 1px,
+        transparent 26px
+    );
+    pointer-events: none;
+    border-radius: 10px;
+}
+
+.sticky-note > * {
+    position: relative;
+    z-index: 1;
+}
+
+.sticky-note--view {
+    min-height: 160px;
+}
+
+.sticky-hint {
+    margin-top: 10px;
+    font-size: 12px;
+    color: rgba(20,48,44,0.7);
+    font-weight: 600;
+}
+
+.paperclip {
+    position: absolute;
+    top: -10px;
+    right: 16px;
+    width: 24px;
+    height: 42px;
+    border: 3px solid #6e7b87;
+    border-top: 0;
+    border-radius: 12px 12px 16px 16px;
+    transform: rotate(8deg);
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.15);
+    pointer-events: none;
+}
+
+.paperclip-toggle {
+    position: absolute;
+    top: -10px;
+    right: 18px;
+    width: 26px;
+    height: 44px;
+    border: 3px solid #6e7b87;
+    border-top: 0;
+    border-radius: 12px 12px 16px 16px;
+    background: transparent;
+    display: inline-block;
+    cursor: pointer;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.15);
+    z-index: 4;
+    transition: transform 0.18s ease;
+}
+
+.paperclip-toggle::after {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 5px;
+    width: 12px;
+    height: 26px;
+    border: 3px solid #6e7b87;
+    border-top: 0;
+    border-radius: 8px 8px 12px 12px;
+}
+
+.paperclip-toggle.is-open {
+    transform: rotate(6deg);
+}
+
+.paperclip-toggle:focus-visible {
+    outline: 2px dashed var(--accent);
+    outline-offset: 4px;
+}
+
+.paperclip::after {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 5px;
+    width: 12px;
+    height: 26px;
+    border: 3px solid #6e7b87;
+    border-top: 0;
+    border-radius: 8px 8px 12px 12px;
+}
+
+.checklist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.checklist-title {
+    font-weight: 800;
+    font-size: 16px;
+    font-family: 'Permanent Marker', 'Luckiest Guy', cursive;
+}
+
+.checklist-header .btn-small {
+    margin-top: 0;
+}
+
+.checklist-items {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sticky-note .checklist-items {
+    max-height: 240px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.drag-handle {
+    font-size: 16px;
+    color: rgba(20,48,44,0.6);
+    cursor: grab;
+    user-select: none;
+}
+
+.checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 2px solid rgba(0,0,0,0.06);
+    background: var(--card-background);
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.04);
+}
+
+.sticky-note .checklist-item {
+    background: rgba(255,255,255,0.85);
+    border: 1px solid rgba(20,48,44,0.08);
+    box-shadow: 2px 2px 0 rgba(20,48,44,0.05);
+}
+
+.checklist-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--secondary);
+}
+
+.checklist-item input[type="text"] {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-color);
+    font-size: 16px;
+}
+
+.sticky-note .checklist-item input[type="text"] {
+    font-size: 14px;
+}
+
+.sticky-note .checklist-item input[type="text"]::placeholder {
+    color: rgba(20,48,44,0.6);
+}
+
+.checklist-remove {
+    border: none;
+    background: #ffd2d9;
+    color: #7a1f2b;
+    border-radius: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.checklist-remove:hover {
+    background: #ffbac6;
+}
+
+.sticky-checklist {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+    display: grid;
+    gap: 8px;
+}
+
+.sticky-checklist li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.6);
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 2px 2px 0 rgba(20,48,44,0.06);
+}
+
+.sticky-checklist input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--secondary);
+}
+
+.sticky-checklist span.done {
+    text-decoration: line-through;
+    color: rgba(20,48,44,0.55);
 }
 
 .writing-actions {
@@ -476,6 +831,133 @@ body.recess-theme::after {
     color: rgba(20,48,44,0.75);
 }
 
+/* Recess Relay */
+.relay-page {
+    padding: 22px 24px;
+}
+
+.relay-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+    gap: 20px;
+    margin-top: 14px;
+}
+
+.relay-card {
+    background: var(--card-background);
+    border: 2px solid rgba(0,0,0,0.06);
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: 5px 5px 0 rgba(0,0,0,0.05);
+}
+
+.relay-card h2 {
+    margin: 0 0 8px;
+    font-family: 'Luckiest Guy', 'Permanent Marker', cursive;
+    font-size: 20px;
+}
+
+.relay-help {
+    margin: 6px 0 12px;
+    color: rgba(20,48,44,0.72);
+    font-size: 14px;
+}
+
+.relay-form {
+    display: grid;
+    gap: 10px;
+}
+
+.relay-label {
+    font-weight: 700;
+    font-size: 13px;
+}
+
+.relay-input,
+.relay-textarea {
+    border-radius: 10px;
+    border: 2px solid rgba(0,0,0,0.08);
+    padding: 10px 12px;
+    font-size: 15px;
+    background: #fffefc;
+    color: var(--text-color);
+}
+
+.relay-textarea {
+    resize: vertical;
+    min-height: 120px;
+}
+
+.relay-code {
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: #fff4e4;
+    border: 2px dashed rgba(0,0,0,0.08);
+    display: inline-block;
+}
+
+.relay-board {
+    background: linear-gradient(180deg, #fffefc 0%, #fff8ef 100%);
+}
+
+.relay-prompt {
+    background: #fff4df;
+    border: 2px dashed rgba(0,0,0,0.08);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+}
+
+.relay-prompt-title {
+    font-weight: 800;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+}
+
+.relay-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 10px;
+}
+
+.relay-entry {
+    background: #fffdf8;
+    border: 2px solid rgba(0,0,0,0.05);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.04);
+}
+
+.relay-entry-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 800;
+    color: rgba(20,48,44,0.7);
+    margin-bottom: 6px;
+}
+
+.relay-entry p {
+    margin: 0;
+}
+
+.relay-empty {
+    margin-top: 8px;
+    font-weight: 600;
+    color: rgba(20,48,44,0.7);
+}
+
+.inline-form {
+    display: inline-block;
+    margin: 0;
+}
+
 .footer-doodle {
     margin: 30px auto 20px;
     text-align: center;
@@ -530,22 +1012,48 @@ h1 {
 .stash-form, .edit-form {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
+    width: 100%;
 }
 
 .stash-form textarea, .edit-form textarea {
     width: 100%;
-    height: 200px;
+    height: 420px;
     background-color: var(--card-background);
     color: var(--text-color);
-    border: none;
+    border: 2px solid rgba(0,0,0,0.08);
     outline: none;
     font-size: 18px;
     line-height: 1.6;
     padding: 20px;
     resize: none;
-    border-radius: 4px;
+    border-radius: 12px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
     transition: background-color 0.3s, color 0.3s;
+    box-sizing: border-box;
+}
+
+.stash-preview {
+    margin-top: 6px;
+    font-size: 14px;
+    color: rgba(20,48,44,0.7);
+}
+
+.stash-detail {
+    padding: 22px;
+    border-radius: 16px;
+    background: var(--card-background);
+    border: 2px solid rgba(0,0,0,0.06);
+    box-shadow: 6px 6px 0 rgba(0,0,0,0.04);
+    position: relative;
+    font-size: 18px;
+    text-align: left;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.stash-body p {
+    white-space: pre-wrap;
+    line-height: 1.7;
 }
 
 .stash-form textarea::placeholder, .edit-form textarea::placeholder {
@@ -699,6 +1207,10 @@ body.light-theme .save-button:hover {
     line-height: 1.4;
     word-break: break-word;
 }
+
+.stash-title-lg {
+    font-size: 28px;
+}
 .stash-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .stash-date {
     font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
@@ -706,6 +1218,17 @@ body.light-theme .save-button:hover {
     letter-spacing: 0.2px;
     padding: 6px 10px;
     background: #fef3d7;
+    border: 2px dotted rgba(20,48,44,0.12);
+    border-radius: 10px;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.06);
+    color: var(--text-color);
+}
+
+.stash-checklist-count {
+    font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    font-size: 13px;
+    padding: 6px 10px;
+    background: #e6f7ff;
     border: 2px dotted rgba(20,48,44,0.12);
     border-radius: 10px;
     box-shadow: 2px 2px 0 rgba(0,0,0,0.06);
@@ -815,18 +1338,6 @@ body.light-theme .delete-button:hover {
     background-color: #c0392b;
 }
 
-/* Stash Detail Styling */
-.stash-detail {
-    background-color: var(--card-background);
-    color: var(--text-color);
-    padding: 20px;
-    border-radius: 5px;
-    font-size: 18px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    text-align: left;
-    transition: background-color 0.3s, color 0.3s;
-}
-
 /* Responsive design */
 @media screen and (max-width: 1024px) {
     .container {
@@ -840,6 +1351,35 @@ body.light-theme .delete-button:hover {
 
     .stash-sidebar {
         order: -1;
+    }
+
+    .stash-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .relay-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sticky-note {
+        max-width: 100%;
+        justify-self: start;
+    }
+
+    .sticky-note--floating {
+        right: 16px;
+    }
+
+    .sticky-note--floating.is-open {
+        position: relative;
+        top: auto;
+        right: auto;
+        margin-top: 12px;
+    }
+
+    .paperclip-toggle {
+        top: -8px;
+        right: 16px;
     }
 
     .page-hero {
@@ -904,6 +1444,11 @@ body.light-theme .delete-button:hover {
         font-size: 16px;
     }
 
+    .stash-form textarea,
+    .edit-form textarea {
+        height: 300px;
+    }
+
     .action-button,
     .btn,
     .btn-small,
@@ -941,7 +1486,7 @@ body.light-theme .delete-button:hover {
 
     .writing-form textarea,
     .edit-form textarea {
-        height: 150px;
+        height: 240px;
         font-size: 16px;
     }
 
@@ -975,7 +1520,7 @@ body.light-theme .delete-button:hover {
 
     .stash-form textarea,
     .edit-form textarea {
-        height: 160px;
+        height: 240px;
         padding: 16px;
         font-size: 16px;
     }
@@ -1091,7 +1636,7 @@ body.light-theme .delete-button:hover {
 
 /* ruled margins for notebook look */
 .container {
-    max-width: 1100px;
+    max-width: 1280px;
     margin: 28px auto;
     padding: 18px 24px;
     background: transparent;

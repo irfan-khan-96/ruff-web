@@ -3,15 +3,42 @@
 {% block title %}View Stash - Ruff{% endblock %}
 
 {% block content %}
-    <h1>View Stash</h1>
-    <div class="stash-detail">
-        <p>{{ stash.text }}</p>
+    <div class="stash-layout">
+        <div class="stash-detail polaroid">
+            <span class="paperclip"></span>
+            <h1 class="stash-title stash-title-lg">{{ stash.title or 'Untitled Stash' }}</h1>
+            {% if stash.body %}
+            <div class="stash-body">
+                <p>{{ stash.body }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if stash.checklist %}
+        <aside class="sticky-note sticky-note--view">
+            <span class="paperclip"></span>
+            <div class="checklist-header">
+                <div class="checklist-title">Recess Roster</div>
+            </div>
+            <ul class="sticky-checklist">
+                {% for item in stash.checklist %}
+                <li>
+                    <input type="checkbox" disabled {% if item.done %}checked{% endif %}>
+                    <span class="{% if item.done %}done{% endif %}">{{ item.text }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </aside>
+        {% endif %}
     </div>
     <div class="stash-actions">
         <a href="{{ url_for('main.edit_stash', stash_id=stash.id) }}" class="action-button">Edit</a>
+        <form action="{{ url_for('main.relay_start_from_stash', stash_id=stash.id) }}" method="POST" class="inline-form">
+            {{ csrf_token() }}
+            <button type="submit" class="action-button">Recess Relay</button>
+        </form>
         <a href="{{ url_for('main.share_stash', stash_id=stash.id) }}" class="action-button">Nearby Share</a>
         <a href="{{ url_for('main.export_stash', stash_id=stash.id) }}" class="action-button">⬇️ Export</a>
         <a href="{{ url_for('main.view_stashes') }}" class="action-button">Back to Stashes</a>
     </div>
 {% endblock %}
-

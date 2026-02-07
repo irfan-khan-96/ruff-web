@@ -3,16 +3,36 @@
 {% block title %}Edit Stash - Ruff{% endblock %}
 
 {% block content %}
-    <h1>Edit Stash</h1>
-    <form action="{{ url_for('main.edit_stash', stash_id=stash.id) }}" method="POST" class="edit-form">
-        {{ form.hidden_tag() }}
-        <textarea name="text" required>{{ form.text.data }}</textarea>
-        <input type="hidden" name="collection" value="{{ form.collection.data if form.collection.data is not none else -1 }}">
-        <input type="hidden" name="tags" value="{{ form.tags.data or '' }}">
-        <button type="submit" class="save-button">Update</button>
+    <form action="{{ url_for('main.edit_stash', stash_id=stash.id) }}" method="POST" class="edit-form writing-form">
+        {{ form.csrf_token }}
+        <div class="writing-hero polaroid">
+            <span class="paperclip-toggle" role="button" tabindex="0" data-note-toggle aria-expanded="false" aria-controls="task-note">
+                <span class="sr-only">Toggle task note</span>
+            </span>
+            <div class="writing-header">
+                <div class="hero-pill">✏️ Edit Stash</div>
+                <div class="hero-sub">Polish your notes before they head to the stash list.</div>
+            </div>
+            <div class="writing-field">
+                {{ form.title(class="writing-title") }}
+            </div>
+            <div class="writing-field">
+                {{ form.body(placeholder="Update your stash...") }}
+            </div>
+            <input type="hidden" name="collection" value="{{ form.collection.data if form.collection.data is not none else -1 }}">
+            <input type="hidden" name="tags" value="{{ form.tags.data or '' }}">
+            <button type="submit" class="save-button">Update Stash</button>
+            <aside id="task-note" class="sticky-note sticky-note--floating" data-note data-checklist aria-hidden="true">
+                <div class="checklist-header">
+                    <div class="checklist-title">Recess Roster</div>
+                </div>
+                <div class="checklist-items" data-checklist-items></div>
+                {{ form.checklist(id="checklist-data") }}
+                <div class="sticky-hint">Jot your recess to‑dos here.</div>
+            </aside>
+        </div>
     </form>
     <div class="stash-actions">
         <a href="{{ url_for('main.view_stashes') }}" class="action-button">Back to Stashes</a>
     </div>
 {% endblock %}
-

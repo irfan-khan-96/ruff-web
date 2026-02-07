@@ -1,11 +1,11 @@
 # Ruff App - Testing & Validation Report
 
-**Date**: 2026-01-01  
+**Date**: 2026-02-07  
 **Status**: ✅ **ALL TESTS PASSED**
 
 ## Summary
 
-The Ruff Flask application has been comprehensively tested. All Collections, Tags, and Stashes functionality works correctly with proper database persistence.
+The Ruff Flask application has been comprehensively tested. All Collections, Tags, and Stashes functionality works correctly with proper database persistence in the testing config.
 
 ## Issues Found & Fixed
 
@@ -27,10 +27,10 @@ The Ruff Flask application has been comprehensively tested. All Collections, Tag
 - **Fix**: Updated methods to detect input type and handle both cases
 - **Status**: ✅ Fixed
 
-### 4. **Dynamic Tag Relationship**
-- **Problem**: Test code used `len()` on tag relationships which are lazy-loaded queries
-- **Root Cause**: Many-to-many relationship configured with `lazy='dynamic'`
-- **Fix**: Updated tests to use `.count()` instead of `len()`
+### 4. **Tag Relationship Loading**
+- **Problem**: Tag counts in templates were empty due to missing `stash_count` on model instances
+- **Root Cause**: Templates expected `stash_count` but routes passed raw models
+- **Fix**: Routes now supply per-user tag counts and collections with counts
 - **Status**: ✅ Fixed
 
 ## Test Results
@@ -88,7 +88,7 @@ The Ruff Flask application has been comprehensively tested. All Collections, Tag
 - Unique tag names
 - Timestamp tracking
 - Many-to-many relationship with stashes
-- Dynamic query support for filtering
+- Select-in loading for faster list views
 
 ✅ **Database Persistence**
 - SQLite database created in `instance/ruff.db`
@@ -103,10 +103,7 @@ The Ruff Flask application has been comprehensively tested. All Collections, Tag
 cd /Users/bililumis/ruff-web
 source .venv/bin/activate
 
-# Initialize fresh database
-python init_db.py init
-
-# Run comprehensive tests
+# Run comprehensive tests (isolated testing config)
 python test_features.py
 ```
 

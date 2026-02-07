@@ -28,6 +28,7 @@
                     <li class="nav-dropdown">
                         <a href="#" class="nav-link dropdown-toggle">⚙️ More</a>
                         <ul class="dropdown-menu">
+                            <li><a href="{{ url_for('main.relay_home') }}" class="dropdown-link">📝 Recess Relay</a></li>
                             <li><a href="{{ url_for('main.share') }}" class="dropdown-link">📡 Nearby Share</a></li>
                             <li><a href="{{ url_for('main.export_data') }}" class="dropdown-link">⬇️ Export All</a></li>
                             <li><a href="{{ url_for('main.import_data') }}" class="dropdown-link">⬆️ Import</a></li>
@@ -38,6 +39,7 @@
                         <a href="{{ url_for('main.logout') }}" class="nav-link logout-link">Logout</a>
                     </li>
                 {% else %}
+                    <li><a href="{{ url_for('main.relay_home') }}" class="nav-link">Recess Relay</a></li>
                     <li><a href="{{ url_for('main.login') }}" class="nav-link">Login</a></li>
                     <li><a href="{{ url_for('main.signup') }}" class="nav-link">Sign Up</a></li>
                 {% endif %}
@@ -72,4 +74,3 @@
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
-

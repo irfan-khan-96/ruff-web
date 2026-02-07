@@ -40,8 +40,14 @@ def export_user_data(user: User) -> Dict[str, Any]:
             'created_at': collection.created_at.isoformat(),
         })
     
-    # Export tags
-    for tag in Tag.query.all():
+    # Export tags used by this user's stashes
+    user_tags = (
+        Tag.query.join(Tag.stashes)
+        .filter(Stash.user_id == user.id)
+        .distinct()
+        .all()
+    )
+    for tag in user_tags:
         export_data['tags'].append({
             'id': tag.id,
             'name': tag.name,
@@ -52,11 +58,13 @@ def export_user_data(user: User) -> Dict[str, Any]:
     for stash in user.stashes:
         stash_data = {
             'id': stash.id,
-            'text': stash.text,
+            'title': stash.title,
+            'body': stash.body,
+            'checklist': stash.get_checklist(),
             'preview': stash.preview,
             'collection_id': stash.collection_id,
             'collection_name': stash.collection.name if stash.collection else None,
-            'tags': [tag.name for tag in stash.tags.all()],
+            'tags': [tag.name for tag in stash.tags],
             'created_at': stash.created_at.isoformat(),
             'updated_at': stash.updated_at.isoformat(),
         }
@@ -73,18 +81,26 @@ def export_to_json(user: User) -> str:
 
 def export_stash_to_text(stash: Stash) -> str:
     """Export a single stash as formatted text."""
-    text = f"# {stash.preview}\n\n"
+    title = stash.title or stash.preview
+    text = f"# {title}\n\n"
     text += f"**Created:** {stash.created_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
     text += f"**Updated:** {stash.updated_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
     
     if stash.collection:
         text += f"**Collection:** {stash.collection.name}\n"
     
-    if stash.tags.count() > 0:
-        tags = [tag.name for tag in stash.tags.all()]
+    if len(stash.tags) > 0:
+        tags = [tag.name for tag in stash.tags]
         text += f"**Tags:** {', '.join(tags)}\n"
+
+    checklist_items = stash.get_checklist()
+    if checklist_items:
+        text += "**Checklist:**\n"
+        for item in checklist_items:
+            mark = "x" if item.get("done") else " "
+            text += f"- [{mark}] {item.get('text')}\n"
     
-    text += f"\n---\n\n{stash.text}"
+    text += f"\n---\n\n{stash.body}"
     return text
 
 
@@ -174,7 +190,7 @@ def import_from_json(user: User, json_data: str) -> Dict[str, Any]:
                 continue
 
             # If the ID exists globally for another user, mint a new one
-            existing_any = Stash.query.get(stash_data['id'])
+            existing_any = db.session.get(Stash, stash_data['id'])
             stash_id = stash_data['id'] if existing_any is None else str(uuid4())
 
             # Map collection ID
@@ -189,11 +205,16 @@ def import_from_json(user: User, json_data: str) -> Dict[str, Any]:
                 if col:
                     collection_id = col.id
             
+            checklist_items = stash_data.get('checklist')
+            if not isinstance(checklist_items, list):
+                checklist_items = []
+
             new_stash = Stash(
                 id=stash_id,
                 user_id=user.id,
-                text=stash_data['text'],
-                preview=stash_data.get('preview', stash_data['text'][:100]),
+                title=stash_data.get('title'),
+                body=stash_data.get('body') or stash_data.get('text') or "",
+                checklist=checklist_items,
                 collection_id=collection_id,
             )
             db.session.add(new_stash)

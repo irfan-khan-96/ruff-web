@@ -9,16 +9,21 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from app import create_app
-from models import db, Stash, Collection, Tag
+from models import db, Stash, Collection, Tag, User
 
 def test_collections():
     print("\n=== Testing Collections ===")
-    app = create_app('development')
+    app = create_app('testing')
     
     with app.app_context():
+        db.create_all()
+        user = User(username="tester", email="tester@example.com")
+        user.set_password("password")
+        db.session.add(user)
+        db.session.commit()
         # Create collections
-        col1 = Collection(name="Work", description="Work-related stashes")
-        col2 = Collection(name="Personal", description="Personal notes")
+        col1 = Collection(user_id=user.id, name="Work", description="Work-related stashes")
+        col2 = Collection(user_id=user.id, name="Personal", description="Personal notes")
         db.session.add(col1)
         db.session.add(col2)
         db.session.commit()
@@ -34,12 +39,19 @@ def test_collections():
         db.session.commit()
         assert Collection.query.count() == 1
         print(f"✓ Deleted collection, remaining: {Collection.query.count()}")
+        db.session.remove()
+        db.drop_all()
 
 def test_tags():
     print("\n=== Testing Tags ===")
-    app = create_app('development')
+    app = create_app('testing')
     
     with app.app_context():
+        db.create_all()
+        user = User(username="tester", email="tester@example.com")
+        user.set_password("password")
+        db.session.add(user)
+        db.session.commit()
         # Create tags
         tag1 = Tag(name="important")
         tag2 = Tag(name="urgent")
@@ -51,14 +63,21 @@ def test_tags():
         tags = Tag.query.all()
         assert len(tags) == 2
         print(f"✓ Retrieved {len(tags)} tags")
+        db.session.remove()
+        db.drop_all()
 
 def test_stashes():
     print("\n=== Testing Stashes ===")
-    app = create_app('development')
+    app = create_app('testing')
     
     with app.app_context():
+        db.create_all()
+        user = User(username="tester", email="tester@example.com")
+        user.set_password("password")
+        db.session.add(user)
+        db.session.commit()
         # Create collection and tags
-        col = Collection(name="Test", description="Test collection")
+        col = Collection(user_id=user.id, name="Test", description="Test collection")
         tag1 = Tag(name="test-tag-1")
         tag2 = Tag(name="test-tag-2")
         db.session.add_all([col, tag1, tag2])
@@ -67,31 +86,39 @@ def test_stashes():
         # Create stashes
         long_text = "This is my first stash with some important content " * 5  # Make it long
         stash1 = Stash(
-            text=long_text,
-            collection_id=col.id
+            body=long_text,
+            title="First stash",
+            checklist=[{"text": "Ship v1", "done": False}],
+            collection_id=col.id,
+            user_id=user.id
         )
         stash1.add_tag(tag1)
         stash1.add_tag(tag2)
         
         stash2 = Stash(
-            text="Another stash with different information",
-            collection_id=col.id
+            body="Another stash with different information",
+            collection_id=col.id,
+            user_id=user.id
         )
         stash2.add_tag(tag1)
         
         db.session.add_all([stash1, stash2])
         db.session.commit()
         print(f"✓ Created 2 stashes with tags")
+
+        # Verify checklist
+        assert len(stash1.get_checklist()) == 1
+        print("✓ Checklist stored")
         
         # Verify relationships
-        assert stash1.tags.count() == 2
-        assert stash2.tags.count() == 1
-        print(f"✓ Stash 1 has {stash1.tags.count()} tags")
-        print(f"✓ Stash 2 has {stash2.tags.count()} tags")
+        assert len(stash1.tags) == 2
+        assert len(stash2.tags) == 1
+        print(f"✓ Stash 1 has {len(stash1.tags)} tags")
+        print(f"✓ Stash 2 has {len(stash2.tags)} tags")
         
         # Verify preview
         assert len(stash1.preview) > 0
-        assert stash1.preview != stash1.text  # Should be truncated
+        assert stash1.preview != stash1.body  # Should be truncated
         print(f"✓ Preview generated: '{stash1.preview}'")
         
         # Verify timestamps
@@ -100,7 +127,7 @@ def test_stashes():
         print(f"✓ Created at: {stash1.created_at}")
         
         # Test editing
-        stash1.text = "Updated content here"
+        stash1.body = "Updated content here"
         stash1.update_preview()  # Update preview after text change
         db.session.commit()
         assert stash1.preview == "Updated content here"
@@ -111,16 +138,23 @@ def test_stashes():
         db.session.commit()
         assert Stash.query.count() == 1
         print(f"✓ Stash deleted, remaining: {Stash.query.count()}")
+        db.session.remove()
+        db.drop_all()
 
 def test_relationships():
     print("\n=== Testing Relationships ===")
-    app = create_app('development')
+    app = create_app('testing')
     
     with app.app_context():
+        db.create_all()
+        user = User(username="tester", email="tester@example.com")
+        user.set_password("password")
+        db.session.add(user)
+        db.session.commit()
         # Create test data with unique names
-        col = Collection(name="Main-Rel")
+        col = Collection(user_id=user.id, name="Main-Rel")
         tag = Tag(name="rel-important")
-        stash = Stash(text="Test stash")
+        stash = Stash(body="Test stash", user_id=user.id)
         
         db.session.add_all([col, tag, stash])
         db.session.commit()
@@ -134,14 +168,16 @@ def test_relationships():
         # Test tag relationship
         stash.add_tag(tag)
         db.session.commit()
-        assert tag in stash.tags.all()
-        assert stash in tag.stashes.all()
+        assert tag in stash.tags
+        assert stash in tag.stashes
         print(f"✓ Tag relationship works (many-to-many)")
         
         # Test cascade
         col2 = Collection.query.filter_by(name="Main-Rel").first()
         stashes_in_col = Stash.query.filter_by(collection_id=col2.id).all()
         print(f"✓ Stashes in collection: {len(stashes_in_col)}")
+        db.session.remove()
+        db.drop_all()
 
 if __name__ == "__main__":
     try:

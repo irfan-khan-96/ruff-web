@@ -2,23 +2,48 @@
 Route handlers for the Ruff application.
 """
 
-import uuid
 import logging
+import os
+import json
+import secrets
+import string
+from datetime import datetime
 from functools import wraps
 from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, g, send_file, send_from_directory
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import or_, text
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from sqlalchemy import or_, text, func
 from io import BytesIO
 
-from forms import StashForm, EditStashForm, CollectionForm, SearchForm, LoginForm, SignupForm
-from models import db, Stash, Tag, Collection, User
-from utils import create_stash_dict, sanitize_stash_data
+from forms import (
+    StashForm,
+    EditStashForm,
+    CollectionForm,
+    LoginForm,
+    SignupForm,
+    ResendVerificationForm,
+    ForgotPasswordForm,
+    ResetPasswordForm,
+)
+from models import db, Stash, Tag, Collection, User, RelaySession, RelayEntry
 from export_import import export_to_json, export_stash_to_text, import_from_json
+from auth_utils import generate_token, verify_token, send_email
 
 logger = logging.getLogger(__name__)
 
 bp = Blueprint("main", __name__)
 csrf = CSRFProtect()
+_default_limits = [
+    limit.strip()
+    for limit in os.getenv("RATELIMIT_DEFAULT", "200 per day;50 per hour").split(";")
+    if limit.strip()
+]
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=_default_limits,
+    storage_uri=os.getenv("RATELIMIT_STORAGE_URL", "memory://"),
+)
 
 
 # Health and readiness probes -------------------------------------------------
@@ -64,7 +89,14 @@ def load_logged_in_user():
     if user_id is None:
         g.user = None
     else:
-        g.user = User.query.get(user_id)
+        g.user = db.session.get(User, user_id)
+        if (
+            g.user
+            and current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True)
+            and not g.user.email_verified
+        ):
+            session.clear()
+            g.user = None
 
 
 def get_collection_choices():
@@ -78,16 +110,78 @@ def get_collection_choices():
         return []
 
 
-def get_tag_choices():
-    """Get all tags for form choices."""
-    try:
-        return [(t.id, t.name) for t in Tag.query.all()]
-    except Exception as e:
-        logger.error(f"Error fetching tags: {e}")
+def get_user_tags_with_counts(user_id: int):
+    """Return tags for a user with stash counts."""
+    rows = (
+        db.session.query(Tag, func.count(Stash.id))
+        .join(Tag.stashes)
+        .filter(Stash.user_id == user_id)
+        .group_by(Tag.id)
+        .order_by(Tag.name)
+        .all()
+    )
+    return [
+        {"id": tag.id, "name": tag.name, "stash_count": count}
+        for tag, count in rows
+    ]
+
+
+def get_user_collections_with_counts(user_id: int):
+    """Return collections for a user with stash counts."""
+    rows = (
+        db.session.query(Collection, func.count(Stash.id))
+        .outerjoin(
+            Stash,
+            (Stash.collection_id == Collection.id) & (Stash.user_id == user_id),
+        )
+        .filter(Collection.user_id == user_id)
+        .group_by(Collection.id)
+        .order_by(Collection.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": collection.id,
+            "name": collection.name,
+            "description": collection.description,
+            "stash_count": count,
+            "created_at": collection.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        }
+        for collection, count in rows
+    ]
+
+
+def generate_relay_code(length: int = 6) -> str:
+    """Generate a short uppercase relay code."""
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def parse_checklist(raw: str):
+    """Parse checklist JSON into a normalized list of dicts."""
+    if not raw:
         return []
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    items = []
+    for item in data:
+        if isinstance(item, dict):
+            text = str(item.get("text", "")).strip()
+            done = bool(item.get("done", False))
+        else:
+            text = str(item).strip()
+            done = False
+        if text:
+            items.append({"text": text, "done": done})
+    return items
 
 
 @bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     """Handle user login."""
     if g.user is not None:
@@ -100,9 +194,14 @@ def login():
         if user is None or not user.check_password(form.password.data):
             flash("Invalid username or password.", "danger")
             return redirect(url_for("main.login"))
+
+        if current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True) and not user.email_verified:
+            flash("Please verify your email before logging in.", "warning")
+            return redirect(url_for("main.resend_verification", email=user.email))
         
         session.clear()
         session['user_id'] = user.id
+        session.permanent = bool(form.remember.data)
         logger.info(f"User {user.username} logged in")
         flash(f"Welcome back, {user.username}!", "success")
         return redirect(url_for("main.index"))
@@ -111,6 +210,7 @@ def login():
 
 
 @bp.route("/signup", methods=["GET", "POST"])
+@limiter.limit("5 per minute")
 def signup():
     """Handle user registration."""
     if g.user is not None:
@@ -119,8 +219,8 @@ def signup():
     form = SignupForm()
     if form.validate_on_submit():
         user = User(
-            username=form.username.data,
-            email=form.email.data
+            username=form.username.data.strip(),
+            email=form.email.data.strip().lower()
         )
         user.set_password(form.password.data)
         
@@ -128,7 +228,14 @@ def signup():
             db.session.add(user)
             db.session.commit()
             logger.info(f"New user registered: {user.username}")
-            flash("Account created successfully! Please log in.", "success")
+            token = generate_token(user, "email_verify")
+            verify_url = url_for("main.verify_email", token=token, _external=True)
+            send_email(
+                user.email,
+                "Verify your Ruff account",
+                f"Verify your email: {verify_url}",
+            )
+            flash("Account created! Check your email to verify before logging in.", "success")
             return redirect(url_for("main.login"))
         except Exception as e:
             logger.error(f"Error creating user: {e}")
@@ -148,14 +255,99 @@ def logout():
     return redirect(url_for("main.login"))
 
 
+@bp.route("/verify/<token>")
+def verify_email(token):
+    """Verify a user's email address."""
+    user, error = verify_token(
+        token,
+        "email_verify",
+        current_app.config.get("EMAIL_VERIFY_TOKEN_EXP", 86400),
+    )
+    if error:
+        flash("Verification link is invalid or expired.", "danger")
+        return redirect(url_for("main.resend_verification"))
+
+    if not user.email_verified:
+        user.email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        db.session.commit()
+        flash("Email verified! You can now log in.", "success")
+    else:
+        flash("Email already verified. Please log in.", "info")
+    return redirect(url_for("main.login"))
+
+
+@bp.route("/verify/resend", methods=["GET", "POST"])
+@limiter.limit("5 per minute")
+def resend_verification():
+    """Resend verification email."""
+    form = ResendVerificationForm()
+    if request.method == "GET" and request.args.get("email"):
+        form.email.data = request.args.get("email")
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data.strip().lower()).first()
+        if user and not user.email_verified:
+            token = generate_token(user, "email_verify")
+            verify_url = url_for("main.verify_email", token=token, _external=True)
+            send_email(
+                user.email,
+                "Verify your Ruff account",
+                f"Verify your email: {verify_url}",
+            )
+        flash("If the account exists, a verification link has been sent.", "info")
+        return redirect(url_for("main.login"))
+    return render_template("resend_verification.html", form=form)
+
+
+@bp.route("/password/forgot", methods=["GET", "POST"])
+@limiter.limit("5 per minute")
+def forgot_password():
+    """Request a password reset email."""
+    form = ForgotPasswordForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data.strip().lower()).first()
+        if user:
+            token = generate_token(user, "password_reset")
+            reset_url = url_for("main.reset_password", token=token, _external=True)
+            send_email(
+                user.email,
+                "Reset your Ruff password",
+                f"Reset your password: {reset_url}",
+            )
+        flash("If the account exists, a reset link has been sent.", "info")
+        return redirect(url_for("main.login"))
+    return render_template("forgot_password.html", form=form)
+
+
+@bp.route("/password/reset/<token>", methods=["GET", "POST"])
+@limiter.limit("10 per hour")
+def reset_password(token):
+    """Reset a user's password."""
+    user, error = verify_token(
+        token,
+        "password_reset",
+        current_app.config.get("PASSWORD_RESET_TOKEN_EXP", 3600),
+    )
+    if error:
+        flash("Password reset link is invalid or expired.", "danger")
+        return redirect(url_for("main.forgot_password"))
+
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        user.set_password(form.password.data)
+        db.session.commit()
+        flash("Password reset successfully. Please log in.", "success")
+        return redirect(url_for("main.login"))
+    return render_template("reset_password.html", form=form)
+
+
 @bp.route("/")
 @login_required
 def index():
     """Render the home page with stash creation form."""
     form = StashForm()
     form.collection.choices = [(-1, "-- No Collection --")] + get_collection_choices()
-    saved_text = session.get("saved_text", "")
-    return render_template("index.html", form=form, saved_text=saved_text)
+    return render_template("index.html", form=form)
 
 
 @bp.route("/stash", methods=["POST"])
@@ -167,9 +359,9 @@ def stash():
     
     if form.validate_on_submit():
         try:
-            text = form.text.data
-            stash_id = str(uuid.uuid4())
-            preview = text[:50] + ('...' if len(text) > 50 else '')
+            title = form.title.data
+            body = form.body.data
+            checklist_items = parse_checklist(form.checklist.data)
             
             # Get collection if selected
             collection_id = None
@@ -177,9 +369,9 @@ def stash():
                 collection_id = form.collection.data
             
             new_stash = Stash(
-                id=stash_id,
-                text=text,
-                preview=preview,
+                title=title,
+                body=body,
+                checklist=checklist_items,
                 user_id=g.user.id,
                 collection_id=collection_id
             )
@@ -195,7 +387,7 @@ def stash():
             db.session.commit()
             
             flash("Stash saved successfully!", "success")
-            logger.info(f"New stash created: {stash_id}")
+            logger.info(f"New stash created: {new_stash.id}")
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error creating stash: {str(e)}")
@@ -228,7 +420,8 @@ def view_stashes():
             search_pattern = f"%{search_query}%"
             query = query.filter(
                 or_(
-                    Stash.text.ilike(search_pattern),
+                    Stash.title.ilike(search_pattern),
+                    Stash.body.ilike(search_pattern),
                     Stash.preview.ilike(search_pattern)
                 )
             )
@@ -236,13 +429,13 @@ def view_stashes():
         stashes = query.order_by(Stash.created_at.desc()).all()
         
         # Get all collections and tags for sidebar - filtered by current user
-        collections = Collection.query.filter_by(user_id=g.user.id).all()
-        tags = Tag.query.all()
+        collection_dicts = get_user_collections_with_counts(g.user.id)
+        tags = get_user_tags_with_counts(g.user.id)
         
         return render_template(
             "stashes.html",
             stashes=[s.to_dict() for s in stashes],
-            collections=collections,
+            collections=collection_dicts,
             tags=tags,
             current_collection=collection_id,
             current_tag=tag_name,
@@ -260,17 +453,30 @@ def view_stash(stash_id):
     """Display a specific stash."""
     try:
         stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-        
-        if stash is None:
-            logger.warning(f"Stash not found: {stash_id}")
-            flash("Stash not found.", "error")
-            return redirect(url_for("main.view_stashes"))
-        
         return render_template("viewstash.html", stash=stash.to_dict())
     except Exception as e:
         logger.error(f"Error loading stash {stash_id}: {str(e)}")
         flash("An error occurred while loading the stash.", "error")
         return redirect(url_for("main.view_stashes"))
+
+
+@bp.route("/stashes/<stash_id>/checklist", methods=["POST"])
+@login_required
+def update_checklist(stash_id):
+    """Update checklist items for a stash."""
+    try:
+        stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+        payload = request.get_json(silent=True) or {}
+        items = payload.get("checklist")
+        if not isinstance(items, list):
+            return {"error": "Invalid checklist"}, 400
+        stash.set_checklist(items)
+        db.session.commit()
+        return {"success": True}, 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error updating checklist {stash_id}: {str(e)}")
+        return {"error": "Failed to update checklist"}, 500
 
 
 @bp.route("/stashes/<stash_id>/edit", methods=["GET", "POST"])
@@ -285,8 +491,10 @@ def edit_stash(stash_id):
         
         if form.validate_on_submit():
             try:
-                stash.text = form.text.data
-                stash.preview = stash.text[:50] + ('...' if len(stash.text) > 50 else '')
+                stash.title = form.title.data.strip() if form.title.data else None
+                stash.body = form.body.data
+                stash.update_preview()
+                stash.set_checklist(parse_checklist(form.checklist.data))
                 
                 # Update collection
                 if form.collection.data and form.collection.data != -1:
@@ -295,8 +503,7 @@ def edit_stash(stash_id):
                     stash.collection_id = None
                 
                 # Update tags
-                for tag in stash.tags.all():
-                    stash.tags.remove(tag)
+                stash.tags.clear()
                 if form.tags.data:
                     tags = [tag.strip().lower() for tag in form.tags.data.split(',') if tag.strip()]
                     for tag_name in tags:
@@ -311,9 +518,11 @@ def edit_stash(stash_id):
                 logger.error(f"Error updating stash {stash_id}: {str(e)}")
                 flash("Failed to update stash. Please try again.", "error")
         
-        form.text.data = stash.text
+        form.title.data = stash.title or ""
+        form.body.data = stash.body
         form.collection.data = stash.collection_id or -1
-        form.tags.data = ', '.join([tag.name for tag in stash.tags.all()])
+        form.tags.data = ', '.join([tag.name for tag in stash.tags])
+        form.checklist.data = json.dumps(stash.get_checklist())
         
         return render_template("editstash.html", form=form, stash=stash.to_dict())
     except Exception as e:
@@ -351,8 +560,8 @@ def delete_stash(stash_id):
 def view_collections():
     """Display all collections."""
     try:
-        collections = Collection.query.filter_by(user_id=g.user.id).all()
-        return render_template("collections.html", collections=[c.to_dict() for c in collections])
+        collections = get_user_collections_with_counts(g.user.id)
+        return render_template("collections.html", collections=collections)
     except Exception as e:
         logger.error(f"Error loading collections: {str(e)}")
         flash("An error occurred while loading collections.", "error")
@@ -423,13 +632,8 @@ def delete_collection(collection_id):
 def view_tags():
     """Display all tags."""
     try:
-        tags = (
-            Tag.query.join(Tag.stashes)
-            .filter(Stash.user_id == g.user.id)
-            .distinct()
-            .all()
-        )
-        return render_template("tags.html", tags=[t.to_dict() for t in tags])
+        tags = get_user_tags_with_counts(g.user.id)
+        return render_template("tags.html", tags=tags)
     except Exception as e:
         logger.error(f"Error loading tags: {str(e)}")
         flash("An error occurred while loading tags.", "error")
@@ -441,7 +645,7 @@ def view_tags():
 def delete_tag(tag_id):
     """Delete a tag."""
     try:
-        tag = Tag.query.get(tag_id)
+        tag = db.session.get(Tag, tag_id)
         
         if tag is None:
             flash("Tag not found.", "error")
@@ -461,7 +665,7 @@ def delete_tag(tag_id):
                 stash.remove_tag(tag)
 
             # Delete the tag only if it's no longer used by any stash
-            if tag.stashes.count() == 0:
+            if len(tag.stashes) == 0:
                 tag_name = tag.name
                 db.session.delete(tag)
                 flash(f"Tag '{tag_name}' deleted successfully!", "success")
@@ -561,8 +765,10 @@ def share_payload(stash_id):
     stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
     return {
         "id": stash.id,
-        "text": stash.text,
-        "tags": [tag.name for tag in stash.tags.all()],
+        "title": stash.title,
+        "body": stash.body,
+        "checklist": stash.get_checklist(),
+        "tags": [tag.name for tag in stash.tags],
         "collection": stash.collection.name if stash.collection else None,
     }, 200
 
@@ -573,13 +779,19 @@ def import_shared_stash():
     """Import a shared stash payload into the current user's account."""
     try:
         data = request.get_json() or {}
-        text = (data.get("text") or "").strip()
+        title = (data.get("title") or "").strip()
+        body = (data.get("body") or "").strip()
+        checklist_items = data.get("checklist")
+        if not isinstance(checklist_items, list):
+            checklist_items = []
 
-        if not text:
-            return {"error": "Missing text"}, 400
+        if not body:
+            return {"error": "Missing body"}, 400
 
         new_stash = Stash(
-            text=text,
+            title=title or None,
+            body=body,
+            checklist=checklist_items,
             user_id=g.user.id,
             collection_id=None,
         )
@@ -596,6 +808,153 @@ def import_shared_stash():
         db.session.rollback()
         logger.error(f"Error importing shared stash: {str(e)}")
         return {"error": str(e)}, 500
+
+
+# ============================================================================
+# Recess Relay Routes
+# ============================================================================
+
+@bp.route("/relay", methods=["GET", "POST"])
+def relay_home():
+    """Join or start a Recess Relay."""
+    if request.method == "GET":
+        return render_template("relay_home.html")
+
+    action = (request.form.get("action") or "").strip()
+    if action == "join":
+        code = (request.form.get("code") or "").strip().upper()
+        if not code:
+            flash("Enter a relay code to join.", "warning")
+            return redirect(url_for("main.relay_home"))
+        return redirect(url_for("main.relay_view", code=code))
+
+    if action == "start":
+        if g.user is None:
+            flash("Login required to start a relay.", "warning")
+            return redirect(url_for("main.login"))
+
+        title = (request.form.get("title") or "").strip() or "Recess Relay"
+        prompt = (request.form.get("prompt") or "").strip()
+        max_entries_raw = (request.form.get("max_entries") or "").strip()
+        try:
+            max_entries = int(max_entries_raw) if max_entries_raw else 8
+        except ValueError:
+            max_entries = 8
+        max_entries = max(3, min(max_entries, 20))
+
+        code = generate_relay_code()
+        while RelaySession.query.filter_by(code=code).first():
+            code = generate_relay_code()
+
+        relay = RelaySession(
+            code=code,
+            owner_id=g.user.id,
+            title=title,
+            prompt=prompt or None,
+            max_entries=max_entries,
+        )
+        db.session.add(relay)
+        db.session.commit()
+        flash(f"Relay started. Share code {relay.code}.", "success")
+        return redirect(url_for("main.relay_view", code=relay.code))
+
+    flash("Invalid relay action.", "error")
+    return redirect(url_for("main.relay_home"))
+
+
+@bp.route("/relay/start/<stash_id>", methods=["POST"])
+@login_required
+def relay_start_from_stash(stash_id):
+    """Start a relay from an existing stash."""
+    stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+    title = stash.title or "Recess Relay"
+    prompt = stash.body or ""
+
+    code = generate_relay_code()
+    while RelaySession.query.filter_by(code=code).first():
+        code = generate_relay_code()
+
+    relay = RelaySession(
+        code=code,
+        owner_id=g.user.id,
+        title=title,
+        prompt=prompt,
+        max_entries=8,
+    )
+    db.session.add(relay)
+    db.session.commit()
+    flash(f"Relay started. Share code {relay.code}.", "success")
+    return redirect(url_for("main.relay_view", code=relay.code))
+
+
+@bp.route("/relay/<code>")
+def relay_view(code):
+    """View a relay session."""
+    relay = RelaySession.query.filter_by(code=code.upper()).first_or_404()
+    entries = relay.entries
+    entry_count = len(entries)
+    can_add = (not relay.is_closed) and entry_count < relay.max_entries
+    is_owner = g.user is not None and g.user.id == relay.owner_id
+    return render_template(
+        "relay.html",
+        relay=relay,
+        entries=entries,
+        can_add=can_add,
+        is_owner=is_owner,
+        entry_count=entry_count,
+    )
+
+
+@bp.route("/relay/<code>/add", methods=["POST"])
+def relay_add(code):
+    """Add a line to a relay session."""
+    relay = RelaySession.query.filter_by(code=code.upper()).first_or_404()
+    if relay.is_closed:
+        flash("This relay is closed.", "warning")
+        return redirect(url_for("main.relay_view", code=relay.code))
+
+    body = (request.form.get("body") or "").strip()
+    if not body:
+        flash("Add a line before submitting.", "warning")
+        return redirect(url_for("main.relay_view", code=relay.code))
+    if len(body) > 240:
+        flash("Keep it short — max 240 characters per line.", "warning")
+        return redirect(url_for("main.relay_view", code=relay.code))
+
+    entry_count = db.session.query(func.max(RelayEntry.position)).filter_by(session_id=relay.id).scalar() or 0
+    if entry_count >= relay.max_entries:
+        flash("This relay already hit its limit.", "warning")
+        return redirect(url_for("main.relay_view", code=relay.code))
+
+    author = g.user.username if g.user else (request.form.get("author_name") or "Guest").strip()
+    if not author:
+        author = "Guest"
+
+    entry = RelayEntry(
+        session_id=relay.id,
+        author_name=author[:80],
+        body=body,
+        position=entry_count + 1,
+    )
+    db.session.add(entry)
+    db.session.commit()
+    return redirect(url_for("main.relay_view", code=relay.code))
+
+
+@bp.route("/relay/<code>/close", methods=["POST"])
+@login_required
+def relay_close(code):
+    """Close a relay session."""
+    relay = RelaySession.query.filter_by(code=code.upper()).first_or_404()
+    if relay.owner_id != g.user.id:
+        flash("Only the relay owner can close it.", "error")
+        return redirect(url_for("main.relay_view", code=relay.code))
+
+    relay.is_closed = True
+    relay.closed_at = datetime.utcnow()
+    db.session.commit()
+    flash("Relay closed.", "success")
+    return redirect(url_for("main.relay_view", code=relay.code))
 
 
 @bp.route("/import", methods=["GET", "POST"])
@@ -661,7 +1020,7 @@ def import_data():
 def bulk_delete():
     """Delete multiple stashes at once."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         stash_ids = data.get('stash_ids', [])
         
         if not stash_ids:
@@ -699,7 +1058,7 @@ def bulk_delete():
 def bulk_move():
     """Move multiple stashes to a collection."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         stash_ids = data.get('stash_ids', [])
         collection_id = data.get('collection_id')
         

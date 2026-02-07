@@ -3,20 +3,36 @@
 {% block title %}Home - Ruff{% endblock %}
 
 {% block content %}
-    <div class="writing-hero polaroid">
-        <div class="writing-header">
-            <div class="hero-pill">✏️ Writing Area</div>
-            <div class="hero-sub">Capture a thought before recess ends.</div>
-        </div>
-        <form action="{{ url_for('main.stash') }}" method="POST" class="stash-form writing-form">
-            {{ form.hidden_tag() }}
-            {{ form.text(placeholder="Start writing...", value=saved_text) }}
+    <form action="{{ url_for('main.stash') }}" method="POST" class="stash-form writing-form">
+        {{ form.csrf_token }}
+        <div class="writing-hero polaroid">
+            <span class="paperclip-toggle" role="button" tabindex="0" data-note-toggle aria-expanded="false" aria-controls="task-note">
+                <span class="sr-only">Toggle task note</span>
+            </span>
+            <div class="writing-header">
+                <div class="hero-pill">✏️ Writing Area</div>
+                <div class="hero-sub">Capture a thought before recess ends.</div>
+            </div>
+            <div class="writing-field">
+                {{ form.title(class="writing-title") }}
+            </div>
+            <div class="writing-field">
+                {{ form.body(placeholder="Start writing...") }}
+            </div>
             <div class="writing-actions">
                 {{ form.submit(class="save-button") }}
                 <a href="{{ url_for('main.view_stashes') }}" class="action-button">View Stashes</a>
             </div>
-        </form>
-    </div>
+            <aside id="task-note" class="sticky-note sticky-note--floating" data-note data-checklist aria-hidden="true">
+                <div class="checklist-header">
+                    <div class="checklist-title">Recess Roster</div>
+                </div>
+                <div class="checklist-items" data-checklist-items></div>
+                {{ form.checklist(id="checklist-data") }}
+                <div class="sticky-hint">Jot your recess to‑dos here.</div>
+            </aside>
+        </div>
+    </form>
 
     <section class="about-ruff polaroid">
         <details class="story-details">
@@ -33,4 +49,3 @@
         </details>
     </section>
 {% endblock %}
-
