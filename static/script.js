@@ -31,6 +31,63 @@ document.addEventListener('DOMContentLoaded', () => {
         applyTheme(next);
     });
 
+    // Navbar toggle for small screens
+    const navToggle = document.getElementById('nav-toggle');
+    navToggle?.addEventListener('click', () => {
+        const container = document.querySelector('.navbar-container');
+        container?.classList.toggle('open');
+    });
+
+    // Ensure menu state is consistent on load/resize
+    const navbarContainer = document.querySelector('.navbar-container');
+    const normalizeNav = () => {
+        if (!navbarContainer) return;
+        if (window.innerWidth > 600) {
+            navbarContainer.classList.remove('open');
+        }
+    };
+    window.addEventListener('resize', normalizeNav);
+    normalizeNav();
+
+    // Initialize aria-expanded for dropdown toggles
+    document.querySelectorAll('.dropdown-toggle').forEach((t) => t.setAttribute('aria-expanded', 'false'));
+
+    // Dropdown toggle support (click to open on both desktop & mobile)
+    document.querySelectorAll('.nav-dropdown').forEach((drop) => {
+        const toggle = drop.querySelector('.dropdown-toggle');
+        const menu = drop.querySelector('.dropdown-menu');
+        if (!toggle || !menu) return;
+
+        toggle.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            // close other open dropdowns
+            document.querySelectorAll('.nav-dropdown.open').forEach((d) => {
+                if (d !== drop) {
+                    d.classList.remove('open');
+                    const t = d.querySelector('.dropdown-toggle');
+                    t?.setAttribute('aria-expanded', 'false');
+                }
+            });
+            drop.classList.toggle('open');
+            toggle.setAttribute('aria-expanded', String(drop.classList.contains('open')));
+        });
+    });
+
+    // Close dropdowns / nav when clicking outside
+    document.addEventListener('click', (ev) => {
+        document.querySelectorAll('.nav-dropdown.open').forEach((d) => {
+            d.classList.remove('open');
+            const t = d.querySelector('.dropdown-toggle');
+            t?.setAttribute('aria-expanded', 'false');
+        });
+        if (navbarContainer && window.innerWidth <= 600) {
+            // close mobile nav when clicking outside the navbar
+            const inside = ev.target instanceof Element && ev.target.closest('.navbar-container');
+            if (!inside) navbarContainer.classList.remove('open');
+        }
+    });
+
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {
             // Silent fail for unsupported environments
@@ -107,11 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const createItem = (item = { text: '', done: false }) => {
             const row = document.createElement('div');
             row.className = 'checklist-item';
-            row.draggable = true;
-
-            const handle = document.createElement('span');
-            handle.className = 'drag-handle';
-            handle.textContent = '☰';
+            row.classList.add('new');
 
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -122,17 +175,43 @@ document.addEventListener('DOMContentLoaded', () => {
             textInput.placeholder = 'Add a task...';
             textInput.value = item.text || '';
 
+            // When Enter is pressed, create/focus the next checklist input
+            textInput.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    const rows = Array.from(itemsContainer.querySelectorAll('.checklist-item'));
+                    const idx = rows.indexOf(row);
+                    const nextRow = rows[idx + 1];
+                    if (nextRow) {
+                        const nextInput = nextRow.querySelector('input[type="text"]');
+                        nextInput?.focus();
+                    } else {
+                        createItem();
+                        // Small timeout to ensure element is in DOM
+                        setTimeout(() => {
+                            const updated = Array.from(itemsContainer.querySelectorAll('.checklist-item'));
+                            const lastInput = updated[updated.length - 1]?.querySelector('input[type="text"]');
+                            lastInput?.focus();
+                        }, 0);
+                    }
+                    ensureTrailingBlank();
+                    syncItems();
+                }
+            });
+
             const removeButton = document.createElement('button');
             removeButton.type = 'button';
             removeButton.className = 'checklist-remove';
             removeButton.setAttribute('aria-label', 'Remove item');
             removeButton.textContent = '✕';
 
-            row.appendChild(handle);
             row.appendChild(checkbox);
             row.appendChild(textInput);
             row.appendChild(removeButton);
             itemsContainer.appendChild(row);
+
+            // Remove the 'new' class after animation completes
+            setTimeout(() => row.classList.remove('new'), 250);
         };
 
         const ensureTrailingBlank = () => {

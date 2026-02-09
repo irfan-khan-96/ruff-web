@@ -19,6 +19,7 @@
                         <div class="navbar-left">
                                 <a href="{{ url_for('main.index') }}" class="navbar-brand">Ruff</a>
                         </div>
+            <button id="nav-toggle" class="nav-toggle" aria-label="Toggle navigation">☰</button>
             <ul class="navbar-menu">
                 {% if g.user %}
                     <li><a href="{{ url_for('main.index') }}" class="nav-link">Home</a></li>
@@ -26,7 +27,7 @@
                     <li><a href="{{ url_for('main.view_collections') }}" class="nav-link">Collections</a></li>
                     <li><a href="{{ url_for('main.view_tags') }}" class="nav-link">Tags</a></li>
                     <li class="nav-dropdown">
-                        <a href="#" class="nav-link dropdown-toggle">⚙️ More</a>
+                        <a href="#" class="nav-link dropdown-toggle">🪑 Teachers Lounge</a>
                         <ul class="dropdown-menu">
                             <li><a href="{{ url_for('main.relay_home') }}" class="dropdown-link">📝 Recess Relay</a></li>
                             <li><a href="{{ url_for('main.share') }}" class="dropdown-link">📡 Nearby Share</a></li>

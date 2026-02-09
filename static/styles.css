@@ -30,6 +30,11 @@
     --flash-error: #e74c3c;
 }
 
+/* Use border-box everywhere to avoid width+padding overflow on small screens */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
 body.light-theme {
     --background-color: #f5f5f5;
     --text-color: #1e1e1e;
@@ -299,6 +304,17 @@ body.recess-theme::after {
     display: none;
 }
 
+/* Nav toggle (hamburger) */
+.nav-toggle {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--text-color);
+    padding: 6px 8px;
+}
+
 /* Chalkboard header variant for some pages */
 .chalkboard {
     background: linear-gradient(180deg,#0d3a2c,#113a2f);
@@ -310,10 +326,20 @@ body.recess-theme::after {
 .navbar-menu {
     list-style-type: none;
     display: flex;
-    gap: 15px;
+    gap: 12px;
     margin: 0;
     padding: 0;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
+
+.navbar-menu li { white-space: nowrap; flex: 0 0 auto; }
+
+.theme-toggle { flex: 0 0 auto; margin-left: 12px; }
 
 .nav-link {
     color: var(--text-color);
@@ -350,7 +376,7 @@ body.recess-theme::after {
     z-index: 1000;
 }
 
-.nav-dropdown:hover .dropdown-menu,
+.nav-dropdown.open .dropdown-menu,
 .nav-dropdown:focus-within .dropdown-menu,
 .nav-dropdown .dropdown-menu:hover {
     display: block;
@@ -408,9 +434,10 @@ body.recess-theme::after {
 /* Container for Main Content */
 .container {
     text-align: left;
-    width: 92%;
     max-width: 1200px;
     margin: 32px auto;
+    padding: 0 18px;
+    width: auto;
     flex: 1;
     position: relative;
     z-index: 1;
@@ -419,7 +446,7 @@ body.recess-theme::after {
 
 .writing-hero {
     margin: 32px auto;
-    padding: 30px 28px;
+    padding: 24px 20px;
     border-radius: 16px;
     border: 2px solid rgba(0,0,0,0.06);
     box-shadow: 8px 8px 0 rgba(0,0,0,0.05);
@@ -428,9 +455,62 @@ body.recess-theme::after {
     flex-direction: column;
     gap: 20px;
     position: relative;
-    overflow: visible;
+    overflow: hidden;
     width: 100%;
     max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Extra small screens: hide decorative overflow-causing elements and constrain layout */
+@media screen and (max-width: 600px) {
+    .polaroid::before,
+    .polaroid::after {
+        display: none !important;
+    }
+
+    .writing-hero {
+        /* ensure it never exceeds viewport when combined with padding */
+        max-width: calc(100vw - 32px);
+        margin-left: auto;
+        margin-right: auto;
+        overflow: visible;
+    }
+
+    .paperclip-toggle,
+    .paperclip {
+        right: 8px;
+    }
+
+    /* prevent any accidental horizontal scroll on small devices */
+    html, body {
+        overflow-x: hidden;
+    }
+}
+
+/* Desktop / tablet: ensure normal desktop layout even if JS toggles classes */
+@media screen and (min-width: 601px) {
+    .navbar-menu { display: flex !important; overflow-x: visible !important; }
+    .nav-toggle { display: none !important; }
+    .navbar-container { flex-wrap: nowrap !important; }
+    .navbar-container.open .navbar-menu { display: flex !important; flex-direction: row !important; }
+    html, body { overflow-x: visible; }
+}
+
+/* Dropdown open state via class (used by JS) */
+.nav-dropdown.open .dropdown-menu {
+    display: block;
+}
+
+/* Mobile: make dropdown menu flow with vertical nav */
+@media screen and (max-width: 600px) {
+    .nav-dropdown .dropdown-menu {
+        position: static;
+        box-shadow: none;
+        border: none;
+        background: transparent;
+        padding-left: 12px;
+    }
+    .dropdown-link { padding: 8px 0; display: block; }
 }
 
 .writing-header {
@@ -494,12 +574,12 @@ body.recess-theme::after {
 
 .sticky-note {
     position: relative;
-    padding: 18px 18px 22px;
-    border-radius: 14px;
-    border: 2px solid rgba(255,176,46,0.35);
-    background: linear-gradient(180deg, #fffdf5 0%, #fff3d4 100%);
-    box-shadow: 6px 6px 0 rgba(20,48,44,0.05);
-    min-height: 190px;
+    padding: 14px 14px 18px;
+    border-radius: 12px;
+    border: 1px solid rgba(200,170,120,0.18);
+    background: linear-gradient(180deg, #fbfaf8 0%, #fff8ea 100%);
+    box-shadow: 4px 4px 0 rgba(20,48,44,0.03);
+    min-height: 160px;
     max-width: 300px;
     justify-self: start;
     width: 100%;
@@ -629,8 +709,8 @@ body.recess-theme::after {
 }
 
 .checklist-title {
-    font-weight: 800;
-    font-size: 16px;
+    font-weight: 700;
+    font-size: 14px;
     font-family: 'Permanent Marker', 'Luckiest Guy', cursive;
 }
 
@@ -641,31 +721,37 @@ body.recess-theme::after {
 .checklist-items {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .sticky-note .checklist-items {
     max-height: 240px;
     overflow-y: auto;
+    overflow-x: hidden;
     padding-right: 2px;
 }
 
-.drag-handle {
-    font-size: 16px;
-    color: rgba(20,48,44,0.6);
-    cursor: grab;
-    user-select: none;
-}
+.drag-handle { display: none !important; }
 
 .checklist-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    border: 2px solid rgba(0,0,0,0.06);
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(0,0,0,0.04);
     background: var(--card-background);
-    box-shadow: 2px 2px 0 rgba(0,0,0,0.04);
+    box-shadow: 1px 1px 0 rgba(0,0,0,0.02);
+    transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.checklist-item.new {
+    animation: slideFade 160ms ease;
+}
+
+@keyframes slideFade {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .sticky-note .checklist-item {
@@ -691,6 +777,17 @@ body.recess-theme::after {
 
 .sticky-note .checklist-item input[type="text"] {
     font-size: 14px;
+}
+
+.checklist-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 4px 6px 8px rgba(20,48,44,0.06);
+}
+
+.checklist-item input[type="text"]:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
 }
 
 .sticky-note .checklist-item input[type="text"]::placeholder {
@@ -960,7 +1057,11 @@ body.recess-theme::after {
 
 .footer-doodle {
     margin: 30px auto 20px;
-    text-align: center;
+    /* match main container width and padding so footer lines up with content */
+    max-width: 1280px;
+    padding: 0 24px;
+    box-sizing: border-box;
+    text-align: left;
     color: rgba(20,48,44,0.8);
     font-weight: 700;
     font-family: 'Permanent Marker', 'Luckiest Guy', cursive;
@@ -1031,6 +1132,13 @@ h1 {
     box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
     transition: background-color 0.3s, color 0.3s;
     box-sizing: border-box;
+}
+
+/* Ensure writing area renders at a usable desktop size immediately
+   (some browsers/layouts collapse until a reflow; a min-height prevents that). */
+.writing-form textarea,
+.writing-form .stash-form textarea {
+    min-height: 420px;
 }
 
 .stash-preview {
@@ -1160,22 +1268,22 @@ body.light-theme .save-button:hover {
 .polaroid::after {
     content: '';
     position: absolute;
-    width: 60px;
-    height: 18px;
+    width: 48px;
+    height: 16px;
     background: linear-gradient(90deg, rgba(255,255,255,0.9), rgba(240,240,240,0.9));
     border-radius: 3px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.12);
     transform: rotate(-12deg);
 }
 .polaroid::after {
-    right: 18px;
+    right: 12px;
     left: auto;
-    top: -10px;
+    top: -8px;
     transform: rotate(10deg);
 }
 .polaroid::before {
-    left: 18px;
-    top: -10px;
+    left: 12px;
+    top: -8px;
 }
 
 /* Slight random tilt by index for playful layout */
@@ -1391,14 +1499,16 @@ body.light-theme .delete-button:hover {
 
 @media screen and (max-width: 900px) {
     .navbar-container {
-        flex-wrap: wrap;
-        gap: 12px;
+        /* Keep a single-line navbar; allow menu to scroll if needed */
+        flex-wrap: nowrap;
+        gap: 8px;
     }
 
     .navbar-menu {
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        row-gap: 8px;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+        gap: 10px;
+        overflow-x: auto;
     }
 
     .bulk-actions-bar {
@@ -1461,23 +1571,37 @@ body.light-theme .delete-button:hover {
     .container {
         width: 100%;
         margin: 20px auto;
-        padding: 14px 14px;
+        padding: 12px 12px;
     }
 
     .navbar {
-        padding: 10px 12px;
+        padding: 8px 12px;
     }
 
     .navbar-container {
-        flex-direction: column;
-        align-items: flex-start;
+        /* Keep navbar in one line; allow horizontal scroll for menu */
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
     }
 
     .navbar-menu {
-        width: 100%;
-        flex-wrap: wrap;
-        gap: 10px;
+        width: auto;
+        flex-wrap: nowrap;
+        gap: 8px;
+        overflow-x: hidden;
+        display: none; /* hidden by default on very small screens */
     }
+
+    .navbar-container.open .navbar-menu {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .nav-toggle { display: inline-flex; }
 
     .writing-hero {
         margin: 18px auto;
@@ -1543,6 +1667,27 @@ body.light-theme .delete-button:hover {
     .tag-small {
         font-size: 12px;
         padding: 5px 8px;
+    }
+}
+
+/* Make sticky note visible inline on small screens and ensure symmetric writing padding */
+@media screen and (max-width: 600px) {
+    .sticky-note--floating {
+        position: relative !important;
+        top: auto !important;
+        right: auto !important;
+        transform: none !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        margin-top: 12px;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .writing-hero {
+        padding-left: 18px;
+        padding-right: 18px;
     }
 }
 

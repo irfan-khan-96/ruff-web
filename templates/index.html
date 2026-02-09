@@ -24,12 +24,12 @@
                 <a href="{{ url_for('main.view_stashes') }}" class="action-button">View Stashes</a>
             </div>
             <aside id="task-note" class="sticky-note sticky-note--floating" data-note data-checklist aria-hidden="true">
+                <div class="checklist-items" data-checklist-items></div>
+                {{ form.checklist(id="checklist-data") }}
                 <div class="checklist-header">
                     <div class="checklist-title">Recess Roster</div>
                 </div>
-                <div class="checklist-items" data-checklist-items></div>
-                {{ form.checklist(id="checklist-data") }}
-                <div class="sticky-hint">Jot your recess to‑dos here.</div>
+                <div class="sticky-hint">Jot your recess to‑dos here — a '90s Recess doodle vibe.</div>
             </aside>
         </div>
     </form>
