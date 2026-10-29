@@ -20,8 +20,16 @@
             <div class="writing-field">
                 {{ form.body(placeholder="Update your stash...") }}
             </div>
-            <input type="hidden" name="collection" value="{{ form.collection.data if form.collection.data is not none else -1 }}">
-            <input type="hidden" name="tags" value="{{ form.tags.data or '' }}">
+            <div class="writing-meta">
+                <div class="writing-meta-field">
+                    {{ form.collection.label }}
+                    {{ form.collection() }}
+                </div>
+                <div class="writing-meta-field">
+                    {{ form.tags.label }}
+                    {{ form.tags(placeholder="e.g. school, ideas") }}
+                </div>
+            </div>
             <button type="submit" class="save-button">Update Stash</button>
             <aside id="task-note" class="sticky-note sticky-note--floating" data-note data-checklist aria-hidden="true">
                 <div class="checklist-header">

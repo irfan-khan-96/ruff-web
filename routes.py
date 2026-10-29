@@ -68,12 +68,13 @@ def healthz():
 
 @bp.route("/readyz", methods=["GET"])
 def readyz():
-    """Readiness check that validates DB connectivity."""
+    """Readiness check: the database is reachable and migrated."""
     try:
-        # Minimal DB check
-        db.session.execute(text("SELECT 1"))
+        # Querying a real table fails until migrations have created the schema
+        db.session.execute(text("SELECT 1 FROM users LIMIT 1"))
         return {"status": "ok"}, 200
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Readiness check failed: {e}")
         return {"status": "error"}, 503
 

@@ -1,0 +1,16 @@
+# Text files use LF in the repository and in working copies on every platform
+# (overrides core.autocrlf). Stops "LF will be replaced by CRLF" warnings and
+# keeps diffs free of line-ending noise.
+* text=auto eol=lf
+
+# Scripts and files read inside Linux containers/CI must stay LF regardless
+*.sh text eol=lf
+Dockerfile text eol=lf
+Procfile text eol=lf
+.dockerignore text eol=lf
+*.yml text eol=lf
+
+# Binary
+*.png binary
+*.ico binary
+*.db binary

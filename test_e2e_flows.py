@@ -79,12 +79,24 @@ def test_logout_ends_the_session(live_server, new_page):
 # Stashes -----------------------------------------------------------------------
 
 def test_stash_lifecycle_with_task_note(live_server, new_page):
-    page = new_page()
-    login(page, live_server, live_server.create_user())
+    from models import db, Collection, User
 
-    # Create, with two tasks on the task note (first one ticked)
+    username = live_server.create_user()
+
+    def seed():
+        user = User.query.filter_by(username=username).first()
+        db.session.add(Collection(user_id=user.id, name="Family"))
+        db.session.commit()
+
+    live_server.query(seed)
+    page = new_page()
+    login(page, live_server, username)
+
+    # Create in a collection with tags, and two tasks on the task note (first ticked)
     page.fill("#title", "Weekend plans")
     page.fill("#body", "Picnic if it is sunny")
+    page.select_option("#collection", label="Family")
+    page.fill("#tags", "Outdoors, food")
     page.click("[data-note-toggle]")
     tasks = page.locator("[data-checklist-items] input[type=text]")
     tasks.nth(0).fill("Buy bread")
@@ -94,9 +106,11 @@ def test_stash_lifecycle_with_task_note(live_server, new_page):
     page.click("#submit")
     expect(page.locator("body")).to_contain_text("Stash saved successfully")
 
-    # Listed and searchable
+    # Listed with its collection and tags, and searchable
     page.goto(f"{live_server.url}/stashes")
     expect(page.locator(".stash-card")).to_have_count(1)
+    expect(page.locator(".stash-collection")).to_contain_text("Family")
+    expect(page.locator(".stash-card .tag-small")).to_have_text(["#outdoors", "#food"])
     page.fill("input[name=search]", "picnic")
     page.click(".btn-search")
     expect(page.locator(".stash-card")).to_have_count(1)
@@ -112,14 +126,25 @@ def test_stash_lifecycle_with_task_note(live_server, new_page):
     expect(items.nth(0).locator("input")).to_be_checked()
     expect(items.nth(1).locator("input")).not_to_be_checked()
 
-    # Edit
+    # Edit: the form shows the current collection and tags; change them
     page.click("text=Edit")
+    expect(page.locator("#collection")).to_have_value(
+        page.locator("#collection option", has_text="Family").get_attribute("value"))
+    expect(page.locator("#tags")).to_have_value("outdoors, food")
     page.fill("#title", "Weekend plans (rain)")
+    page.select_option("#collection", label="-- No Collection --")
+    page.fill("#tags", "indoors")
     page.click("text=Update Stash")
     expect(page.locator("body")).to_contain_text("Stash updated successfully")
     expect(page.locator("body")).to_contain_text("Weekend plans (rain)")
+    expect(page.locator(".stash-collection")).to_have_count(0)
+    expect(page.locator(".stash-card .tag-small")).to_have_text(["#indoors"])
 
-    # Delete
+    # Delete asks first: cancelling keeps the stash, confirming deletes it
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    page.locator(".delete-form button").first.click()
+    expect(page.locator(".stash-card")).to_have_count(1)
+    page.once("dialog", lambda dialog: dialog.accept())
     page.locator(".delete-form button").first.click()
     expect(page.locator("body")).to_contain_text("Stash deleted successfully")
     expect(page.locator(".stash-card")).to_have_count(0)
@@ -200,6 +225,7 @@ def test_export_then_import_restores_stashes(live_server, new_page, tmp_path):
 
     # Delete it, then import the export back
     page.goto(f"{live_server.url}/stashes")
+    page.once("dialog", lambda dialog: dialog.accept())
     page.locator(".delete-form button").first.click()
     expect(page.locator(".stash-card")).to_have_count(0)
 

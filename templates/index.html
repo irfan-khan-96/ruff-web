@@ -20,6 +20,16 @@
             <div class="writing-field">
                 {{ form.body(placeholder="Start writing...") }}
             </div>
+            <div class="writing-meta">
+                <div class="writing-meta-field">
+                    {{ form.collection.label }}
+                    {{ form.collection() }}
+                </div>
+                <div class="writing-meta-field">
+                    {{ form.tags.label }}
+                    {{ form.tags(placeholder="e.g. school, ideas") }}
+                </div>
+            </div>
             <div class="writing-actions">
                 {{ form.submit(class="save-button") }}
                 <a href="{{ url_for('main.view_stashes') }}" class="action-button">View Stashes</a>

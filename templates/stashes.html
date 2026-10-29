@@ -121,7 +121,7 @@
                                 <a href="{{ url_for('main.edit_stash', stash_id=stash.id) }}" class="action-button">Edit</a>
                                 <form action="{{ url_for('main.delete_stash', stash_id=stash.id) }}" method="POST" class="delete-form">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <button type="submit" class="action-button delete-button">Delete</button>
+                                    <button type="submit" class="action-button delete-button" data-confirm="Delete this stash?">Delete</button>
                                 </form>
                             </div>
                         </div>

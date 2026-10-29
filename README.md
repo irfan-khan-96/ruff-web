@@ -89,11 +89,6 @@ DATABASE_URL=postgresql://user:password@localhost/ruff
 alembic upgrade head
 ```
 
-## Testing
-```bash
-pytest -q
-```
-
 ## Stop and Clean
 1. Stop the dev server: press `Ctrl+C` in the terminal running `python run.py`.
 2. If the port is still busy:
@@ -116,7 +111,16 @@ alembic upgrade head
 - Set strong `SECRET_KEY` and `SECURITY_PASSWORD_SALT` values.
 - Configure SMTP if email verification/reset is enabled.
 - Use a production WSGI server (example: `gunicorn`).
-- Run migrations during deploy: `alembic upgrade head`.
+- Run migrations during deploy: `alembic upgrade head`. The `Procfile` does this in its `release` step; the Docker image does it on start (set `RUN_MIGRATIONS=0` to skip).
+- `/readyz` returns 503 until the database is reachable and migrated.
+
+### Docker
+```bash
+docker build -t ruff .
+docker run -p 8000:8000 -v ruff-data:/app/data \
+  -e SECRET_KEY=... -e SECURITY_PASSWORD_SALT=... ruff
+```
+The container runs as an unprivileged user, keeps the SQLite database on the `/app/data` volume, and has a health check on `/readyz`. Without HTTPS in front of it, also pass `-e SESSION_COOKIE_SECURE=0` or logins won't stick.
 
 ## License
 MIT

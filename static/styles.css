@@ -589,6 +589,49 @@ body.recess-theme::after {
     width: 100%;
 }
 
+/* Collection + tags row under the writing area */
+.writing-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+    margin: 4px 0 8px;
+}
+
+.writing-meta-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.writing-meta-field label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.writing-meta-field select,
+.writing-meta-field input {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 2px solid rgba(0,0,0,0.08);
+    background: var(--card-background);
+    color: var(--text-color);
+    font: inherit;
+}
+
+.dark-theme .writing-meta-field select,
+.dark-theme .writing-meta-field input {
+    border-color: rgba(255,255,255,0.14);
+}
+
+@media screen and (max-width: 600px) {
+    .writing-meta {
+        grid-template-columns: 1fr;
+    }
+}
+
 .stash-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.7fr) minmax(240px, 0.9fr);
