@@ -19,7 +19,7 @@ redis==8.1.0
 # gzip/brotli responses (CSS, JS and HTML shrink ~75%)
 Flask-Compress==1.25
 # Error alerting, enabled when SENTRY_DSN is set
-sentry-sdk[flask]==2.72.0
+sentry-sdk[flask]==2.73.0
 
 # Environment Configuration
 python-dotenv==1.2.4
