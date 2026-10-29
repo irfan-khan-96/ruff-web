@@ -25,12 +25,19 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
 
       - name: Apply migrations to a fresh database
         env:
           DATABASE_URL: sqlite:///./ci.db
         run: alembic upgrade head
+
+      - name: Check models match migrations
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+        run: alembic check
 
       - name: Run tests
         # Deprecation warnings fail the build so they get fixed early

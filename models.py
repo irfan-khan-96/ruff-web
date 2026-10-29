@@ -247,7 +247,7 @@ class RelaySession(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
     code = db.Column(db.String(8), nullable=False, unique=True, index=True)
-    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     prompt = db.Column(db.Text, nullable=True)
     is_closed = db.Column(db.Boolean, nullable=False, default=False)
@@ -282,7 +282,7 @@ class RelayEntry(db.Model):
     __tablename__ = "relay_entries"
 
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.String(36), db.ForeignKey("relay_sessions.id"), nullable=False, index=True)
+    session_id = db.Column(db.String(36), db.ForeignKey("relay_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     author_name = db.Column(db.String(80), nullable=False)
     body = db.Column(db.Text, nullable=False)
     position = db.Column(db.Integer, nullable=False)

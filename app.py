@@ -8,6 +8,7 @@ import json
 import logging
 import logging.handlers
 import os
+import secrets
 import uuid
 from flask import Flask, render_template, g, request, has_request_context
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -85,6 +86,24 @@ def create_app(config_name: str = None) -> Flask:
         if hasattr(g, "request_id"):
             response.headers["X-Request-ID"] = g.request_id
         return response
+
+    # Security headers ---------------------------------------------------------
+    @app.context_processor
+    def inject_csp_nonce():
+        """Expose csp_nonce() so templates can mark their inline <script>s."""
+        return {"csp_nonce": get_csp_nonce}
+
+    @app.after_request
+    def set_security_headers(response):
+        response.headers["Content-Security-Policy"] = build_csp(get_csp_nonce())
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if app.config.get("SESSION_COOKIE_SECURE"):
+            # Only when served over HTTPS (secure cookies imply it)
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
     
     # Setup logging
     setup_logging(app)
@@ -99,6 +118,34 @@ def create_app(config_name: str = None) -> Flask:
     logger.info("Application initialized (migrations must be applied separately)")
     
     return app
+
+
+def get_csp_nonce() -> str:
+    """Per-request random nonce for inline scripts allowed by the CSP."""
+    # Stored on the request (not g, which lives as long as the app context)
+    return request.environ.setdefault("ruff.csp_nonce", secrets.token_urlsafe(16))
+
+
+def build_csp(nonce: str) -> str:
+    """
+    Content-Security-Policy for every response.
+
+    Scripts: own origin, the pinned Socket.IO client on cdnjs, and inline
+    scripts carrying this request's nonce. Inline styles stay allowed because
+    templates use <style> blocks and style attributes throughout.
+    """
+    return "; ".join([
+        "default-src 'self'",
+        f"script-src 'self' 'nonce-{nonce}' https://cdnjs.cloudflare.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data:",
+        "connect-src 'self'",  # API calls and Socket.IO (ws/wss to self)
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ])
 
 
 def setup_logging(app: Flask) -> None:

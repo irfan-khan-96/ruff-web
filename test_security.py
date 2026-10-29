@@ -191,6 +191,44 @@ def test_import_skips_oversized_stashes(client, user):
     assert [s.id for s in user.stashes] == ["fine"]
 
 
+# Security headers ------------------------------------------------------------
+
+def test_security_headers_present(app):
+    response = app.test_client().get("/login")
+    csp = response.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'none'" in csp
+    assert "object-src 'none'" in csp
+    assert "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0]
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_inline_scripts_carry_the_request_nonce(client):
+    response = client.get("/share")
+    nonce = response.headers["Content-Security-Policy"].split("'nonce-")[1].split("'")[0]
+    html = response.get_data(as_text=True)
+    assert f'<script nonce="{nonce}">' in html
+    # A fresh nonce on every request
+    assert nonce not in client.get("/share").headers["Content-Security-Policy"]
+
+
+def test_templates_have_no_inline_event_handlers():
+    import pathlib
+    import re
+    pattern = re.compile(r"\son[a-z]+\s*=", re.IGNORECASE)
+    offenders = [
+        str(path) for path in pathlib.Path("templates").rglob("*.html")
+        if pattern.search(path.read_text(encoding="utf-8"))
+    ]
+    assert offenders == []
+
+
+def test_hsts_only_with_secure_cookies(app, monkeypatch):
+    assert "Strict-Transport-Security" not in app.test_client().get("/login").headers
+    monkeypatch.setitem(app.config, "SESSION_COOKIE_SECURE", True)
+    assert "Strict-Transport-Security" in app.test_client().get("/login").headers
+
+
 # Error details and proxies ---------------------------------------------------
 
 def test_readyz_does_not_leak_error_details(app, monkeypatch):

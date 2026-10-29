@@ -1,6 +1,7 @@
 // Bump on deploys that change cached assets; old caches are deleted on activate.
 // v2: pages are no longer cached, so v1 caches (which held private pages) go away.
-const CACHE_VERSION = "ruff-v2";
+// v3: script.js handles delete confirmations (CSP blocks the old inline onclick).
+const CACHE_VERSION = "ruff-v3";
 // Public static assets only. Never pre-cache or cache app pages: they contain
 // a logged-in user's stashes and would survive logout on shared devices.
 const CORE_ASSETS = [

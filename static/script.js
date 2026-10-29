@@ -1,4 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Confirm prompts for destructive buttons (replaces inline onclick, which the CSP blocks)
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-confirm]');
+        if (button && !window.confirm(button.dataset.confirm)) {
+            event.preventDefault();
+        }
+    });
+
     const themeToggle = document.getElementById('theme-toggle');
     const storage = (() => {
         try {

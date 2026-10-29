@@ -20,7 +20,7 @@
                     <a href="{{ url_for('main.view_stashes', tag=tag.name) }}" class="action-button">View</a>
                     <form action="{{ url_for('main.delete_tag', tag_id=tag.id) }}" method="POST" style="display:inline;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <button type="submit" class="action-button delete-button" onclick="return confirm('Delete this tag?')">Delete</button>
+                        <button type="submit" class="action-button delete-button" data-confirm="Delete this tag?">Delete</button>
                     </form>
                 </div>
             </div>

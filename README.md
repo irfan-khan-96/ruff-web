@@ -44,6 +44,14 @@ python run.py
 ```
 6. Open `http://localhost:5000` in the browser.
 
+## Tests
+```bash
+pip install -r requirements-dev.txt
+python -m playwright install chromium
+python -m pytest
+```
+`test_e2e_share.py` drives two browser tabs through a real Nearby Share transfer; it is skipped if Playwright isn't installed. GitHub Actions runs everything on each push.
+
 ## Configuration
 Key environment variables in `.env`:
 - `FLASK_ENV`: `development`, `testing`, or `production`

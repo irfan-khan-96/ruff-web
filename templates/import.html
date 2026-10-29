@@ -231,7 +231,7 @@ hr {
 }
 </style>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 // File input change handler
 document.getElementById('file-input').addEventListener('change', function(e) {
     const fileName = this.files[0]?.name;
