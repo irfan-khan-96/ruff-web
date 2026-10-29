@@ -9,7 +9,7 @@ import secrets
 import string
 from utils import utcnow
 from functools import wraps
-from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, g, send_file, send_from_directory
+from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, g, send_file, send_from_directory, abort
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -151,6 +151,23 @@ def get_user_collections_with_counts(user_id: int):
         }
         for collection, count in rows
     ]
+
+
+def purge_expired_relays() -> None:
+    """Opportunistic cleanup when relays are created; never blocks the request."""
+    try:
+        RelaySession.purge_expired(current_app.config["RELAY_RETENTION_DAYS"])
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Relay cleanup failed: {e}")
+
+
+def get_active_relay_or_404(code: str) -> RelaySession:
+    """Look up a relay by code, treating expired ones as gone."""
+    relay = RelaySession.query.filter_by(code=code.upper()).first_or_404()
+    if relay.is_expired(current_app.config["RELAY_RETENTION_DAYS"]):
+        abort(404)
+    return relay
 
 
 def generate_relay_code(length: int = 6) -> str:
@@ -858,6 +875,7 @@ def relay_home():
             max_entries = 8
         max_entries = max(3, min(max_entries, 20))
 
+        purge_expired_relays()
         code = generate_relay_code()
         while RelaySession.query.filter_by(code=code).first():
             code = generate_relay_code()
@@ -886,6 +904,7 @@ def relay_start_from_stash(stash_id):
     title = stash.title or "Recess Relay"
     prompt = stash.body or ""
 
+    purge_expired_relays()
     code = generate_relay_code()
     while RelaySession.query.filter_by(code=code).first():
         code = generate_relay_code()
@@ -906,7 +925,7 @@ def relay_start_from_stash(stash_id):
 @bp.route("/relay/<code>")
 def relay_view(code):
     """View a relay session."""
-    relay = RelaySession.query.filter_by(code=code.upper()).first_or_404()
+    relay = get_active_relay_or_404(code)
     entries = relay.entries
     entry_count = len(entries)
     can_add = (not relay.is_closed) and entry_count < relay.max_entries
@@ -924,7 +943,7 @@ def relay_view(code):
 @bp.route("/relay/<code>/add", methods=["POST"])
 def relay_add(code):
     """Add a line to a relay session."""
-    relay = RelaySession.query.filter_by(code=code.upper()).first_or_404()
+    relay = get_active_relay_or_404(code)
     if relay.is_closed:
         flash("This relay is closed.", "warning")
         return redirect(url_for("main.relay_view", code=relay.code))
@@ -961,7 +980,7 @@ def relay_add(code):
 @login_required
 def relay_close(code):
     """Close a relay session."""
-    relay = RelaySession.query.filter_by(code=code.upper()).first_or_404()
+    relay = get_active_relay_or_404(code)
     if relay.owner_id != g.user.id:
         flash("Only the relay owner can close it.", "error")
         return redirect(url_for("main.relay_view", code=relay.code))

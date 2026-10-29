@@ -177,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = Boolean(item.done);
+            checkbox.setAttribute('aria-label', 'Mark task as done');
 
             const textInput = document.createElement('input');
             textInput.type = 'text';

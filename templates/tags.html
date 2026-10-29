@@ -13,7 +13,7 @@
             {% for tag in tags %}
             <div class="tag-card">
                 <div class="tag-header">
-                    <h3>#{{ tag.name }}</h3>
+                    <h2>#{{ tag.name }}</h2>
                     <span class="tag-count">{{ tag.stash_count }} stash{{ 'es' if tag.stash_count != 1 else '' }}</span>
                 </div>
                 <div class="tag-actions">
@@ -54,7 +54,7 @@
             margin-bottom: 15px;
         }
         
-        .tag-header h3 {
+        .tag-header h2 {
             margin: 0 0 5px 0;
             font-size: 1.2em;
         }

@@ -50,7 +50,12 @@ pip install -r requirements-dev.txt
 python -m playwright install chromium
 python -m pytest
 ```
-`test_e2e_share.py` drives two browser tabs through a real Nearby Share transfer; it is skipped if Playwright isn't installed. GitHub Actions runs everything on each push.
+The `test_e2e_*.py` files drive the real app in Chromium (shared fixtures in `conftest.py`):
+- `test_e2e_flows.py`: sign-up with email verification, password reset, logout, stash create/search/edit/delete with task notes, collections and bulk actions, export/import, Recess Relay with a guest
+- `test_e2e_share.py`: a real Nearby Share transfer between two tabs
+- `test_e2e_a11y.py`: an axe-core accessibility audit of every page in light and dark themes
+
+They need network access (Socket.IO client and axe-core load from CDNs) and are skipped if Playwright isn't installed. GitHub Actions runs everything on each push.
 
 ## Configuration
 Key environment variables in `.env`:
@@ -63,6 +68,7 @@ Key environment variables in `.env`:
 - `PROXY_FIX_COUNT`: number of reverse proxies in front of the app (default `0`; `1` on Heroku/Render or behind nginx) so rate limits see real client IPs
 - `MAX_CONTENT_LENGTH`: largest accepted request body in bytes (default 16 MB)
 - `SOCKETIO_CORS_ORIGINS`: extra origins allowed to use Nearby Share's Socket.IO (default: same origin only)
+- `RELAY_RETENTION_DAYS`: days before Recess Relay sessions and their lines are deleted (default `30`). Expired relays are removed whenever a new relay starts; to clean up on a schedule run `flask --app "app:create_app()" purge-relays`
 
 Run a single gunicorn worker with threads (see `Procfile`): Socket.IO needs every request from a client to reach the same process.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`

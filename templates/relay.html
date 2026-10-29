@@ -12,7 +12,7 @@
         <div class="page-hero-actions">
             {% if is_owner and not relay.is_closed %}
             <form method="POST" action="{{ url_for('main.relay_close', code=relay.code) }}">
-                {{ csrf_token() }}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-danger">Close Relay</button>
             </form>
             {% endif %}
@@ -52,7 +52,7 @@
             <p class="relay-help">Relay is full. Start another to keep it going.</p>
             {% else %}
             <form method="POST" action="{{ url_for('main.relay_add', code=relay.code) }}" class="relay-form">
-                {{ csrf_token() }}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if not g.user %}
                 <label class="relay-label" for="relay-author">Your name</label>
                 <input id="relay-author" name="author_name" class="relay-input" placeholder="Guest" maxlength="80">

@@ -87,6 +87,14 @@ def create_app(config_name: str = None) -> Flask:
             response.headers["X-Request-ID"] = g.request_id
         return response
 
+    @app.cli.command("purge-relays")
+    def purge_relays_command():
+        """Delete expired Recess Relay sessions (run from cron)."""
+        from models import RelaySession
+        days = app.config["RELAY_RETENTION_DAYS"]
+        count = RelaySession.purge_expired(days)
+        print(f"Deleted {count} relay session(s) older than {days} days.")
+
     # Security headers ---------------------------------------------------------
     @app.context_processor
     def inject_csp_nonce():

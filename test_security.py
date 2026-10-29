@@ -223,6 +223,19 @@ def test_templates_have_no_inline_event_handlers():
     assert offenders == []
 
 
+def test_every_post_form_sends_a_csrf_token():
+    import pathlib
+    import re
+    form_pattern = re.compile(r"<form\b[^>]*method=\"post\"[^>]*>(.*?)</form>", re.IGNORECASE | re.DOTALL)
+    token_markers = ('name="csrf_token"', "form.csrf_token", "form.hidden_tag()")
+    missing = []
+    for path in pathlib.Path("templates").rglob("*.html"):
+        for body in form_pattern.findall(path.read_text(encoding="utf-8")):
+            if not any(marker in body for marker in token_markers):
+                missing.append(f"{path}: {body.strip()[:60]}")
+    assert missing == []
+
+
 def test_hsts_only_with_secure_cookies(app, monkeypatch):
     assert "Strict-Transport-Security" not in app.test_client().get("/login").headers
     monkeypatch.setitem(app.config, "SESSION_COOKIE_SECURE", True)

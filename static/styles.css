@@ -9,7 +9,7 @@
 }
 
 .empty-title { font-weight: 800; font-size: 18px; color: var(--text-color); }
-.empty-sub { color: rgba(20,48,44,0.75); margin: 6px 0 10px; }
+.empty-sub { color: var(--text-muted); margin: 6px 0 10px; }
 .empty-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 /* CSS Variables for Light and Dark Themes */
 :root {
@@ -28,6 +28,10 @@
     --shadow-color: rgba(20,48,44,0.08);
     --flash-success: #2ecc71;
     --flash-error: #e74c3c;
+    --link-color: #0066cc;
+    --text-muted: rgba(20,48,44,0.75); /* secondary text; AA on light surfaces */
+    --danger: #c0392b; /* white text on it passes WCAG AA (5.4:1) */
+    --danger-hover: #a93226;
 }
 
 /* Use border-box everywhere to avoid width+padding overflow on small screens */
@@ -44,6 +48,7 @@ body.light-theme {
     --button-text: #1e1e1e;
     --flash-success: #27ae60;
     --flash-error: #c0392b;
+    --text-muted: rgba(30,30,30,0.72);
 }
 
 /* Dark / night mode */
@@ -58,6 +63,8 @@ body.dark-theme {
     --shadow-color: rgba(0,0,0,0.18);
     --flash-success: #5be38d;
     --flash-error: #f58fb0;
+    --link-color: #8cc4ff; /* readable on dark cards */
+    --text-muted: rgba(247,249,252,0.75);
 }
 
 /* General body styling */
@@ -153,6 +160,13 @@ body.recess-theme.dark-theme::before {
     border-color: rgba(255,255,255,0.08);
     box-shadow: 3px 3px 0 rgba(0,0,0,0.25);
     color: var(--text-color);
+}
+
+/* Light-only backgrounds that need dark equivalents (text is light in dark mode) */
+.dark-theme .btn.btn-secondary,
+.dark-theme .filter-link.active,
+.dark-theme .tag-button.active {
+    background: var(--card-hover);
 }
 
 .dark-theme .polaroid { background: linear-gradient(180deg, #212b3a, #1a2230); }
@@ -544,7 +558,7 @@ body.recess-theme::after {
 
 .hero-sub {
     font-size: 15px;
-    color: rgba(20,48,44,0.78);
+    color: var(--text-muted);
     letter-spacing: 0.2px;
 }
 
@@ -567,7 +581,7 @@ body.recess-theme::after {
 }
 
 .writing-title::placeholder {
-    color: rgba(20,48,44,0.6);
+    color: var(--text-muted);
     font-weight: 500;
 }
 
@@ -642,7 +656,7 @@ body.recess-theme::after {
 .sticky-hint {
     margin-top: 10px;
     font-size: 12px;
-    color: rgba(20,48,44,0.7);
+    color: var(--text-muted);
     font-weight: 600;
 }
 
@@ -801,7 +815,7 @@ body.recess-theme::after {
 }
 
 .sticky-note .checklist-item input[type="text"]::placeholder {
-    color: rgba(20,48,44,0.6);
+    color: var(--text-muted);
 }
 
 .checklist-remove {
@@ -845,7 +859,7 @@ body.recess-theme::after {
 
 .sticky-checklist span.done {
     text-decoration: line-through;
-    color: rgba(20,48,44,0.55);
+    color: var(--text-muted);
 }
 
 .writing-actions {
@@ -935,7 +949,7 @@ body.recess-theme::after {
 .share-status {
     margin-top: 10px;
     font-size: 14px;
-    color: rgba(20,48,44,0.75);
+    color: var(--text-muted);
 }
 
 /* Recess Relay */
@@ -966,7 +980,7 @@ body.recess-theme::after {
 
 .relay-help {
     margin: 6px 0 12px;
-    color: rgba(20,48,44,0.72);
+    color: var(--text-muted);
     font-size: 14px;
 }
 
@@ -1046,7 +1060,7 @@ body.recess-theme::after {
     justify-content: space-between;
     font-size: 12px;
     font-weight: 800;
-    color: rgba(20,48,44,0.7);
+    color: var(--text-muted);
     margin-bottom: 6px;
 }
 
@@ -1057,7 +1071,7 @@ body.recess-theme::after {
 .relay-empty {
     margin-top: 8px;
     font-weight: 600;
-    color: rgba(20,48,44,0.7);
+    color: var(--text-muted);
 }
 
 .inline-form {
@@ -1154,7 +1168,7 @@ h1 {
 .stash-preview {
     margin-top: 6px;
     font-size: 14px;
-    color: rgba(20,48,44,0.7);
+    color: var(--text-muted);
 }
 
 .stash-detail {
@@ -1439,21 +1453,21 @@ body.light-theme .action-button:hover {
 
 /* Delete Button Specific Styling */
 .delete-button {
-    background-color: #e74c3c;
+    background-color: var(--danger);
     color: #ffffff;
 }
 
 .delete-button:hover {
-    background-color: #c0392b;
+    background-color: var(--danger-hover);
 }
 
 body.light-theme .delete-button {
-    background-color: #e74c3c;
+    background-color: var(--danger);
     color: #ffffff;
 }
 
 body.light-theme .delete-button:hover {
-    background-color: #c0392b;
+    background-color: var(--danger-hover);
 }
 
 /* Responsive design */
@@ -1864,7 +1878,7 @@ body.recess-theme {
 }
 
 .page-hero-text h1 { margin: 0 0 4px 0; }
-.page-sub { margin: 0; color: rgba(20,48,44,0.75); font-size: 15px; }
+.page-sub { margin: 0; color: var(--text-muted); font-size: 15px; }
 
 .page-hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 

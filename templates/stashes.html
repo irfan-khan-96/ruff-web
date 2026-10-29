@@ -51,7 +51,7 @@
         </aside>
         
         <!-- Main content -->
-        <main class="stash-main">
+        <section class="stash-main" aria-label="Stashes">
             <div class="page-hero">
                 <div class="page-hero-text">
                     <h1>Your Stashes</h1>
@@ -92,7 +92,7 @@
                     <li class="stash-item">
                         <div class="stash-card polaroid">
                             <div class="stash-checkbox">
-                                <input type="checkbox" class="stash-select" data-stash-id="{{ stash.id }}" />
+                                <input type="checkbox" class="stash-select" data-stash-id="{{ stash.id }}" aria-label="Select {{ stash.title or stash.preview }}" />
                             </div>
                             <div class="stash-info">
                                 <div class="stash-header">
@@ -139,7 +139,7 @@
                     </li>
                 {% endfor %}
             </ul>
-        </main>
+        </section>
     </div>
 
 <script nonce="{{ csp_nonce() }}">

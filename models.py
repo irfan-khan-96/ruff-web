@@ -3,6 +3,7 @@ Database models for the Ruff application.
 """
 
 import json
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from uuid import uuid4
 from flask_sqlalchemy import SQLAlchemy
@@ -262,6 +263,31 @@ class RelaySession(db.Model):
         cascade="all, delete-orphan",
         order_by="RelayEntry.position",
     )
+
+    @staticmethod
+    def expiry_cutoff(retention_days: int) -> datetime:
+        """Relays created before this moment have expired."""
+        return utcnow() - timedelta(days=retention_days)
+
+    def is_expired(self, retention_days: int) -> bool:
+        return self.created_at < self.expiry_cutoff(retention_days)
+
+    @classmethod
+    def purge_expired(cls, retention_days: int) -> int:
+        """Delete expired relays and their entries; return how many relays went."""
+        expired_ids = db.session.query(cls.id).filter(
+            cls.created_at < cls.expiry_cutoff(retention_days)
+        )
+        # Delete entries explicitly: SQLite doesn't enforce ON DELETE CASCADE
+        # unless foreign keys are switched on per connection
+        RelayEntry.query.filter(RelayEntry.session_id.in_(expired_ids.scalar_subquery())).delete(
+            synchronize_session=False
+        )
+        count = cls.query.filter(cls.created_at < cls.expiry_cutoff(retention_days)).delete(
+            synchronize_session=False
+        )
+        db.session.commit()
+        return count
 
     def to_dict(self) -> dict:
         return {

@@ -17,7 +17,7 @@
             <p class="relay-help">Kick off a relay with a prompt or a title.</p>
             {% if g.user %}
             <form method="POST" action="{{ url_for('main.relay_home') }}" class="relay-form">
-                {{ csrf_token() }}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="start">
                 <label class="relay-label" for="relay-title">Title</label>
                 <input id="relay-title" name="title" class="relay-input" placeholder="Recess Relay" maxlength="200">
@@ -39,7 +39,7 @@
             <h2>Join a Relay</h2>
             <p class="relay-help">Have a code? Drop it in and join the chain.</p>
             <form method="POST" action="{{ url_for('main.relay_home') }}" class="relay-form">
-                {{ csrf_token() }}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="join">
                 <label class="relay-label" for="relay-code">Relay Code</label>
                 <input id="relay-code" name="code" class="relay-input" placeholder="ABC123" maxlength="8" autocomplete="off">

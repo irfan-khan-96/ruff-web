@@ -67,6 +67,9 @@ class Config:
         if origin.strip()
     ]
 
+    # Recess Relay sessions (and their entries) are deleted after this many days
+    RELAY_RETENTION_DAYS = int(os.getenv("RELAY_RETENTION_DAYS", "30"))
+
     # Stash Settings
     MAX_STASH_LENGTH = 50000  # Maximum characters per stash
     PREVIEW_LENGTH = 100  # Characters to show in preview

@@ -27,7 +27,7 @@
             <div id="file-name" class="file-name" style="display: none;"></div>
             
             <div class="import-info">
-                <h3>What will be imported:</h3>
+                <h2>What will be imported:</h2>
                 <ul>
                     <li>✓ All stashes with their content</li>
                     <li>✓ Collections and their organization</li>
@@ -47,7 +47,7 @@
         
         <hr>
         
-        <h3>Export Your Data</h3>
+        <h2>Export Your Data</h2>
         <p>Before importing, you can export your current data as a backup.</p>
         <a href="{{ url_for('main.export_data') }}" class="btn btn-secondary">
             ⬇️ Download All Stashes
@@ -153,8 +153,9 @@
     margin-bottom: 20px;
 }
 
-.import-info h3 {
+.import-info h2 {
     margin-top: 0;
+    font-size: 1.17em;
     color: var(--text-color);
 }
 
@@ -220,8 +221,9 @@ hr {
     margin: 30px 0;
 }
 
-.import-card h3 {
+.import-card h2 {
     margin-bottom: 10px;
+    font-size: 1.17em;
     color: var(--text-color);
 }
 
