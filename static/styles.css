@@ -1303,7 +1303,7 @@ body.light-theme .save-button:hover {
 
 /* Individual stash item */
 .stash-item {
-    margin-bottom: 15px;
+    margin-bottom: 28px; /* room for the tilt and the tape strips */
 }
 
 /* Stash card */
@@ -1374,7 +1374,7 @@ body.light-theme .save-button:hover {
 /* Handwritten captions for polaroids */
 .polaroid .stash-preview, .polaroid .stash-date { font-family: 'Permanent Marker', 'Luckiest Guy', cursive; }
 
-.stash-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stash-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: 1; }
 .stash-header { display: flex; align-items: center; gap: 10px; }
 .stash-title {
     font-family: 'Luckiest Guy', 'Permanent Marker', cursive;
@@ -1844,6 +1844,12 @@ body.light-theme .delete-button:hover {
     font-size: 13px;
     color: var(--text-color);
     box-shadow: 3px 3px 0 rgba(0,0,0,0.06);
+}
+
+.dark-theme .tag-small {
+    background: var(--card-hover);
+    border-color: rgba(255,255,255,0.12);
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.25);
 }
 
 /* ruled margins for notebook look */
