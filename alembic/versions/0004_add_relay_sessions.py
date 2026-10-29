@@ -23,7 +23,7 @@ def upgrade() -> None:
         sa.Column("owner_id", sa.Integer(), nullable=False),
         sa.Column("title", sa.String(length=200), nullable=False),
         sa.Column("prompt", sa.Text(), nullable=True),
-        sa.Column("is_closed", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_closed", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("max_entries", sa.Integer(), nullable=False, server_default="8"),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("closed_at", sa.DateTime(), nullable=True),

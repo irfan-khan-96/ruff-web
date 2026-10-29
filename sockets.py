@@ -53,7 +53,12 @@ def _room_size(room) -> int:
 def init_socketio(app):
     """Initialize Socket.IO and register signaling handlers."""
     # None = same-origin only; add trusted origins via SOCKETIO_CORS_ORIGINS
-    socketio.init_app(app, cors_allowed_origins=app.config.get("SOCKETIO_CORS_ORIGINS") or None)
+    socketio.init_app(
+        app,
+        cors_allowed_origins=app.config.get("SOCKETIO_CORS_ORIGINS") or None,
+        # Shared queue when running more than one process (rooms span them)
+        message_queue=app.config.get("SOCKETIO_MESSAGE_QUEUE"),
+    )
 
     @socketio.on("connect")
     def handle_connect(auth=None):

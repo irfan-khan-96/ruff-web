@@ -26,12 +26,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies
+      - name: Install dependencies (versions from requirements.lock)
         run: |
-          pip install -r requirements-dev.txt
+          pip install -r requirements-dev.txt -c requirements.lock
           python -m playwright install --with-deps chromium
 
-      - name: Apply migrations to a fresh database
+      - name: Apply migrations to a fresh SQLite database
         env:
           DATABASE_URL: sqlite:///./ci.db
         run: alembic upgrade head
@@ -44,6 +44,68 @@ jobs:
       - name: Run tests
         # Deprecation warnings fail the build so they get fixed early
         run: python -m pytest -q -W error::DeprecationWarning
+
+  postgres:
+    # The production database: migrations must apply and match the models
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: docker.io/library/postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+        env:
+          POSTGRES_USER: ruff
+          POSTGRES_PASSWORD: ruff
+          POSTGRES_DB: ruff
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ruff -d ruff"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://ruff:ruff@localhost:5432/ruff
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -c requirements.lock
+      - name: Migrate up, check, down and up again
+        run: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+          alembic upgrade head
+
+  container:
+    # The production image, run the way a platform would run it
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Build
+        run: docker build --build-arg VERSION=${{ github.sha }} -t ruff:ci .
+      - name: Run read-only, as a non-root user, on a custom port
+        run: |
+          docker run -d --name ruff --read-only --tmpfs /tmp -v ruffdata:/app/data -p 9000:9000 \
+            -e PORT=9000 -e SESSION_COOKIE_SECURE=0 \
+            -e SECRET_KEY="$(openssl rand -hex 32)" -e SECURITY_PASSWORD_SALT="$(openssl rand -hex 32)" \
+            ruff:ci
+          for i in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' ruff)" = healthy ] && break; sleep 2
+          done
+          docker inspect -f 'health={{.State.Health.Status}} user={{.Config.User}}' ruff
+          test "$(docker inspect -f '{{.State.Health.Status}}' ruff)" = healthy
+          test "$(docker exec ruff id -u)" = 10001
+          curl -fsS http://127.0.0.1:9000/readyz
+      - name: Logs are JSON on stdout
+        run: docker logs ruff 2>&1 | grep -q '^{"ts"'
+      - name: Refuses to start without secrets
+        run: |
+          if docker run --rm -e RUN_MIGRATIONS=0 ruff:ci python -c "from app import create_app; create_app()"; then
+            echo "started without SECRET_KEY/SECURITY_PASSWORD_SALT"; exit 1
+          fi
+      - name: Stops gracefully on SIGTERM
+        run: |
+          docker stop -t 30 ruff
+          test "$(docker inspect -f '{{.State.ExitCode}}' ruff)" = 0
 
   dependency-audit:
     # Fails on any dependency (direct or transitive) with a known vulnerability
@@ -58,4 +120,4 @@ jobs:
       - name: Audit dependencies
         run: |
           pip install pip-audit==2.10.1
-          pip-audit -r requirements.txt -r requirements-dev.txt --progress-spinner off
+          pip-audit -r requirements.lock -r requirements-dev.txt --progress-spinner off

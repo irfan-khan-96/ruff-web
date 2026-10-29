@@ -8,6 +8,7 @@
 *.sqlite3
 instance/
 logs/
+.venv*/
 
 .git/
 .github/
@@ -23,5 +24,6 @@ test-results/
 test_*.py
 conftest.py
 requirements-dev.txt
-init_db.py
-TESTING_REPORT.md
+scripts/
+Procfile
+compose.yaml

@@ -1,0 +1,71 @@
+# Local stack that mirrors production (twelve-factor X: dev/prod parity):
+# the app image, PostgreSQL and Redis as attached services, and migrations
+# as a separate one-off release step.
+#
+#   cp .env.example .env    # then set SECRET_KEY and SECURITY_PASSWORD_SALT
+#   docker compose up --build
+#   open http://localhost:8000
+#
+# Admin tasks run as one-off processes in the same image, e.g.
+#   docker compose run --rm web flask --app "app:create_app()" purge-relays
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql://ruff:ruff@db:5432/ruff
+  RATELIMIT_STORAGE_URL: redis://redis:6379/0
+  SOCKETIO_MESSAGE_QUEUE: redis://redis:6379/1
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+  SECURITY_PASSWORD_SALT: ${SECURITY_PASSWORD_SALT:?set SECURITY_PASSWORD_SALT in .env}
+  # Local: plain HTTP and no mail server
+  SESSION_COOKIE_SECURE: "0"
+  REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-0}
+  # Migrations run in the "release" service below, not in every web process
+  RUN_MIGRATIONS: "0"
+
+services:
+  release:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment: *app-env
+    read_only: true
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: .
+    environment: *app-env
+    ports:
+      - "8000:8000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      release:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  db:
+    image: docker.io/library/postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    environment:
+      POSTGRES_USER: ruff
+      POSTGRES_PASSWORD: ruff
+      POSTGRES_DB: ruff
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "ruff", "-d", "ruff"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: docker.io/library/redis:7.4-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

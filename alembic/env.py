@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from config import get_config
+from config import database_url
 from models import db
 
 # this is the Alembic Config object, which provides
@@ -22,8 +22,7 @@ if config.config_file_name is not None:
 # Prefer DATABASE_URL env var; fallback to app config. Read the config directly
 # rather than building the app: migrations need only the database URL, not the
 # app's secrets.
-flask_env = os.getenv("FLASK_ENV") or "production"
-db_url = os.getenv("DATABASE_URL") or get_config(flask_env).SQLALCHEMY_DATABASE_URI
+db_url = database_url()
 target_metadata = db.metadata
 
 

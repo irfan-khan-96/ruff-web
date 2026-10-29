@@ -6,9 +6,6 @@ limits, Socket.IO auth) are covered in test_security.py.
 """
 
 import logging
-import os
-import subprocess
-import sys
 
 import pytest
 
@@ -124,16 +121,6 @@ def test_share_code_guessing_is_throttled(app, alice):
     assert [(m["name"], m["args"][0]) for m in guesser.get_received()] == [
         ("join_refused", {"reason": "too_many_attempts"})
     ]
-
-
-# A02 Security Misconfiguration -----------------------------------------------
-
-def test_init_db_refuses_to_run_in_production():
-    env = {**os.environ, "FLASK_ENV": "production"}
-    result = subprocess.run([sys.executable, "init_db.py", "clear"], env=env,
-                            capture_output=True, text=True, timeout=60, input="yes\n")
-    assert result.returncode != 0
-    assert "development only" in result.stderr
 
 
 # A04 Cryptographic Failures ----------------------------------------------------

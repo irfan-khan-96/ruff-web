@@ -1,6 +1,8 @@
 # Development and CI extras on top of the app requirements
 -r requirements.txt
 
+pytest==9.1.1
+
 # Browser end-to-end tests (test_e2e_share.py); also run:
 #   python -m playwright install chromium
 playwright==1.64.0

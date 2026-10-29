@@ -8,9 +8,9 @@ import functools
 import hashlib
 import json
 import logging
-import logging.handlers
 import os
 import secrets
+import sys
 import uuid
 from flask import Flask, render_template, g, request, has_request_context
 from flask_compress import Compress
@@ -204,34 +204,23 @@ def build_csp(nonce: str) -> str:
 
 def setup_logging(app: Flask) -> None:
     """
-    Configure logging for the application.
+    Log to stdout only, as an event stream (twelve-factor XI): the platform
+    (Docker, Heroku, systemd, ...) collects and routes it. Nothing is written
+    to disk, so the app also runs on a read-only filesystem.
 
-    Args:
-        app: Flask application instance
+    LOG_FORMAT: "json" (one JSON object per line; default outside debug) or
+    "console" (readable lines; default in debug). LOG_LEVEL: DEBUG, INFO, ...
     """
     root_logger = logging.getLogger()
     if any(getattr(handler, "ruff_handler", False) for handler in root_logger.handlers):
         return
-    
-    # Create logs directory if it doesn't exist
-    logs_dir = os.path.join(os.path.dirname(__file__), "logs")
-    if not os.path.exists(logs_dir):
-        os.makedirs(logs_dir)
-    
-    # File handler for all logs
-    file_handler = logging.handlers.RotatingFileHandler(
-        os.path.join(logs_dir, "ruff.log"),
-        maxBytes=10485760,  # 10MB
-        backupCount=10,
-    )
-    file_handler.setLevel(logging.INFO)
-    file_handler.ruff_handler = True
-    
-    # Console handler for development
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG if app.debug else logging.INFO)
-    console_handler.ruff_handler = True
-    
+
+    log_format = os.getenv("LOG_FORMAT", "console" if app.debug else "json").lower()
+    log_level = os.getenv("LOG_LEVEL", "DEBUG" if app.debug else "INFO").upper()
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.ruff_handler = True
+
     # Create formatters
     class JsonFormatter(logging.Formatter):
         def format(self, record):
@@ -258,14 +247,10 @@ def setup_logging(app: Flask) -> None:
                 base += "\n" + self.formatException(record.exc_info)
             return base
 
-    file_handler.setFormatter(JsonFormatter())
-    console_handler.setFormatter(ConsoleFormatter())
-    
-    # Add handlers to logger
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
-    root_logger.setLevel(logging.DEBUG if app.debug else logging.INFO)
-    
+    handler.setFormatter(JsonFormatter() if log_format == "json" else ConsoleFormatter())
+    root_logger.addHandler(handler)
+    root_logger.setLevel(log_level)
+
     # Inject request_id into log records
     class RequestIdFilter(logging.Filter):
         def filter(self, record):
@@ -274,9 +259,7 @@ def setup_logging(app: Flask) -> None:
             else:
                 record.request_id = "-"
             return True
-    req_filter = RequestIdFilter()
-    file_handler.addFilter(req_filter)
-    console_handler.addFilter(req_filter)
+    handler.addFilter(RequestIdFilter())
 
 
 def register_error_handlers(app: Flask) -> None:

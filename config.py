@@ -7,6 +7,18 @@ Loads configuration from environment variables with sensible defaults.
 import os
 from datetime import timedelta
 
+def database_url(default: str = "sqlite:///./ruff.db") -> str:
+    """
+    DATABASE_URL, normalised for SQLAlchemy: hosts such as Heroku and Render
+    hand out postgres:// URLs; SQLAlchemy needs postgresql+psycopg://.
+    """
+    url = os.getenv("DATABASE_URL") or default
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 # Placeholder secrets for local development only; app.py refuses to start
 # outside development/testing while either is still in use.
 DEV_SECRET_KEY = "dev-secret-key-change-in-production"
@@ -47,10 +59,8 @@ class Config:
     SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "0") == "1"
     
     # Database Settings
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL",
-        "sqlite:///./ruff.db"  # Store in project root
-    )
+    # IV Backing services: the database is an attached resource named by URL
+    SQLALCHEMY_DATABASE_URI = database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Rate Limiting
@@ -64,6 +74,10 @@ class Config:
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(16 * 1024 * 1024)))
 
     # Socket.IO: extra allowed origins (comma-separated); empty = same origin only
+    # Socket.IO across several processes/containers: a shared message queue
+    # (e.g. redis://redis:6379/1). Empty = single process.
+    SOCKETIO_MESSAGE_QUEUE = os.getenv("SOCKETIO_MESSAGE_QUEUE") or None
+
     SOCKETIO_CORS_ORIGINS = [
         origin.strip()
         for origin in os.getenv("SOCKETIO_CORS_ORIGINS", "").split(",")

@@ -19,11 +19,10 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - Debug mode is off in production; errors show generic pages.
 - Headers: Content-Security-Policy with per-request script nonces, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS when served over HTTPS.
 - Session cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` by default in production.
-- Docker image: non-root user, application code not writable, `.dockerignore` keeps secrets, databases and `.git` out.
-- `init_db.py` (which can drop all tables) refuses to run outside development and is excluded from the image.
+- Docker image: base pinned by digest, multi-stage build, non-root user, read-only root filesystem supported, application code not writable, `.dockerignore` keeps secrets, databases and `.git` out.
 
 ### A03 Software Supply Chain Failures
-- All direct dependencies are pinned; CI runs `pip-audit` on direct and transitive dependencies and fails on known vulnerabilities.
+- Direct dependencies are pinned in `requirements.txt` and every transitive one in `requirements.lock`; the image and CI install from the lock. CI runs `pip-audit` on the lock and fails on known vulnerabilities.
 - Dependabot opens weekly update PRs for Python packages, GitHub Actions and the Docker base image.
 - GitHub Actions are pinned to full commit SHAs.
 - The only third-party resource is the Socket.IO client on the Pass page, loaded from cdnjs with Subresource Integrity. Fonts are self-hosted.
@@ -56,7 +55,7 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 
 ### A09 Security Logging and Alerting Failures
 - Security events are logged to the `ruff.security` logger: failed logins (username and IP, never passwords), rate-limit hits, password reset requests, invalid reset links, completed resets.
-- Logs are JSON with a request ID per line.
+- Logs go to stdout as JSON, one event per line with its request ID; nothing is written to local files.
 - Email bodies (which contain account tokens) are never logged in production.
 - Unhandled errors are reported to Sentry when `SENTRY_DSN` is set (no personal data sent).
 

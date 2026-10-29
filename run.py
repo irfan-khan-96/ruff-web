@@ -1,45 +1,22 @@
 """
-Entry point for running the Ruff application.
+Development server (with Socket.IO). Production runs gunicorn; see gunicorn.conf.py.
 
-Load environment variables and start the Flask development server.
+Settings come from the environment, or a local .env file in development:
+PORT (default 5000), HOST (default 127.0.0.1), FLASK_ENV (default development).
 """
 
 import os
-import socket
+
 from dotenv import load_dotenv
-from app import create_app
-from sockets import socketio
 
+load_dotenv()
 
-def find_free_port(start_port=5000, max_attempts=10):
-    """Find a free port starting from start_port."""
-    for port in range(start_port, start_port + max_attempts):
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("127.0.0.1", port))
-            sock.close()
-            return port
-        except OSError:
-            continue
-    return start_port  # Return default if all ports busy
-
+from app import create_app  # noqa: E402  (after .env is loaded)
+from sockets import socketio  # noqa: E402
 
 if __name__ == "__main__":
-    # Load environment variables from .env file
-    load_dotenv()
-    
-    # Create application
     app = create_app(os.getenv("FLASK_ENV", "development"))
-    
-    # Find available port
-    port = find_free_port(5000)
-    
-    # Run the application
-    print(f"Starting Ruff app on http://127.0.0.1:{port}")
-    socketio.run(
-        app,
-        host="127.0.0.1",
-        port=port,
-        debug=app.config.get("DEBUG", False),
-    )
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "5000"))
+    print(f"Ruff dev server on http://{host}:{port}")
+    socketio.run(app, host=host, port=port, debug=app.config.get("DEBUG", False))
