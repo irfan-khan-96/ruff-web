@@ -17,9 +17,11 @@ jobs:
         python-version: ["3.12", "3.14"]
 
     steps:
-      - uses: actions/checkout@v4
+      # Actions pinned to full commit SHAs (tags can be moved); Dependabot
+      # proposes updates
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -42,3 +44,18 @@ jobs:
       - name: Run tests
         # Deprecation warnings fail the build so they get fixed early
         run: python -m pytest -q -W error::DeprecationWarning
+
+  dependency-audit:
+    # Fails on any dependency (direct or transitive) with a known vulnerability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Audit dependencies
+        run: |
+          pip install pip-audit==2.10.1
+          pip-audit -r requirements.txt -r requirements-dev.txt --progress-spinner off

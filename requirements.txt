@@ -14,6 +14,8 @@ Flask-SocketIO==5.7.0
 Flask-Limiter==4.1.1
 # Rate-limit storage backend when RATELIMIT_STORAGE_URL=redis://...
 redis==8.1.0
+# Error alerting, enabled when SENTRY_DSN is set
+sentry-sdk[flask]==2.72.0
 
 # Environment Configuration
 python-dotenv==1.2.4

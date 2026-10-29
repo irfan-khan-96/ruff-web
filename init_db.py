@@ -5,13 +5,21 @@ Use this script to:
 1. Initialize a fresh database
 """
 
+import os
+import sys
+
 from app import create_app
 from models import db, Stash
+
+# Development only: create_all()/drop_all() bypass Alembic and "clear" wipes
+# every table. Production schemas are managed with `alembic upgrade head`.
+if os.getenv("FLASK_ENV", "production") not in ("development", "testing"):
+    sys.exit("init_db.py is for development only; set FLASK_ENV=development (use alembic in production).")
 
 
 def init_database():
     """Initialize a fresh database."""
-    app = create_app()
+    app = create_app(os.environ["FLASK_ENV"])
     
     with app.app_context():
         # Create all tables
@@ -22,7 +30,7 @@ def init_database():
 
 def clear_database():
     """Clear all data from database (WARNING: This cannot be undone!)."""
-    app = create_app()
+    app = create_app(os.environ["FLASK_ENV"])
     
     with app.app_context():
         response = input("⚠️  This will delete ALL stashes! Type 'yes' to confirm: ")
@@ -36,7 +44,7 @@ def clear_database():
 
 def show_statistics():
     """Display database statistics."""
-    app = create_app()
+    app = create_app(os.environ["FLASK_ENV"])
     
     with app.app_context():
         stash_count = Stash.query.count()

@@ -2,6 +2,7 @@
 Route handlers for the Ruff application.
 """
 
+import functools
 import logging
 import os
 import json
@@ -14,7 +15,8 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy import or_, text, func
-from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.exceptions import HTTPException
+from werkzeug.security import check_password_hash, generate_password_hash
 from io import BytesIO
 
 from forms import (
@@ -44,6 +46,8 @@ from auth_utils import (
 )
 
 logger = logging.getLogger(__name__)
+# Security events (failed logins, resets, rate limits) for monitoring/alerting
+security_log = logging.getLogger("ruff.security")
 
 bp = Blueprint("main", __name__)
 csrf = CSRFProtect()
@@ -73,6 +77,8 @@ def readyz():
         # Querying a real table fails until migrations have created the schema
         db.session.execute(text("SELECT 1 FROM users LIMIT 1"))
         return {"status": "ok"}, 200
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Readiness check failed: {e}")
@@ -108,6 +114,8 @@ def get_collection_choices():
         if g.user is None:
             return []
         return [(c.id, c.name) for c in Collection.query.filter_by(user_id=g.user.id).all()]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching collections: {e}")
         return []
@@ -158,6 +166,8 @@ def purge_expired_relays() -> None:
     """Opportunistic cleanup when relays are created; never blocks the request."""
     try:
         RelaySession.purge_expired(current_app.config["RELAY_RETENTION_DAYS"])
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Relay cleanup failed: {e}")
@@ -169,6 +179,13 @@ def get_active_relay_or_404(code: str) -> RelaySession:
     if relay.is_expired(current_app.config["RELAY_RETENTION_DAYS"]):
         abort(404)
     return relay
+
+
+def safe_filename_part(text: str, max_length: int = 30) -> str:
+    """Filename-safe slug of user text (no line breaks, quotes or path characters)."""
+    slug = "".join(ch if ch.isalnum() or ch in " -_" else " " for ch in text)
+    slug = "-".join(slug.split())[:max_length].strip("-")
+    return slug or "untitled"
 
 
 def generate_relay_code(length: int = 6) -> str:
@@ -200,8 +217,20 @@ def parse_checklist(raw: str):
     return items
 
 
+def _login_username_key() -> str:
+    """Rate-limit key for login attempts against one account, from any IP."""
+    return "login-user:" + (request.form.get("username") or "").strip().lower()
+
+
+@functools.lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """A real hash to check against when the username doesn't exist."""
+    return generate_password_hash(secrets.token_urlsafe(16))
+
+
 @bp.route("/login", methods=["GET", "POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("10 per minute", methods=["POST"])  # per IP
+@limiter.limit("20 per hour", key_func=_login_username_key, methods=["POST"])  # per account
 def login():
     """Handle user login."""
     if g.user is not None:
@@ -210,8 +239,15 @@ def login():
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
-        
+
+        if user is None:
+            # Hash anyway so unknown usernames take as long as wrong passwords
+            # (otherwise response time reveals which usernames exist)
+            check_password_hash(_dummy_password_hash(), form.password.data)
         if user is None or not user.check_password(form.password.data):
+            security_log.warning(
+                "Failed login for username=%r from %s", form.username.data, request.remote_addr
+            )
             flash("Invalid username or password.", "danger")
             return redirect(url_for("main.login"))
 
@@ -231,7 +267,7 @@ def login():
 
 
 @bp.route("/signup", methods=["GET", "POST"])
-@limiter.limit("5 per minute")
+@limiter.limit("5 per minute", methods=["POST"])
 def signup():
     """Handle user registration."""
     if g.user is not None:
@@ -239,6 +275,21 @@ def signup():
     
     form = SignupForm()
     if form.validate_on_submit():
+        email = form.email.data.strip().lower()
+        if User.query.filter(func.lower(User.email) == email).first():
+            # Respond exactly as for a new account so the form can't be used to
+            # find out who is registered; tell the real owner instead
+            send_email(
+                email,
+                "Someone tried to sign up with your email",
+                "Someone tried to create a Ruff account with this email address. "
+                "If it was you, log in or reset your password instead. "
+                "If not, you can ignore this message.",
+            )
+            security_log.info("Signup attempted with an existing email from %s", request.remote_addr)
+            flash("Account created! Check your email to verify before logging in.", "success")
+            return redirect(url_for("main.login"))
+
         user = User(
             username=form.username.data.strip(),
             email=form.email.data.strip().lower()
@@ -258,6 +309,8 @@ def signup():
             )
             flash("Account created! Check your email to verify before logging in.", "success")
             return redirect(url_for("main.login"))
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error creating user: {e}")
             flash("An error occurred during registration. Please try again.", "danger")
@@ -327,6 +380,9 @@ def forgot_password():
     form = ForgotPasswordForm()
     if form.validate_on_submit():
         user = User.query.filter_by(email=form.email.data.strip().lower()).first()
+        security_log.info(
+            "Password reset requested from %s (account exists: %s)", request.remote_addr, bool(user)
+        )
         if user:
             token = generate_token(user, "password_reset")
             reset_url = url_for("main.reset_password", token=token, _external=True)
@@ -350,6 +406,7 @@ def reset_password(token):
         current_app.config.get("PASSWORD_RESET_TOKEN_EXP", 3600),
     )
     if error:
+        security_log.warning("Invalid or expired password reset link (%s) from %s", error, request.remote_addr)
         flash("Password reset link is invalid or expired.", "danger")
         return redirect(url_for("main.forgot_password"))
 
@@ -357,6 +414,7 @@ def reset_password(token):
     if form.validate_on_submit():
         user.set_password(form.password.data)
         db.session.commit()
+        security_log.info("Password reset completed for user_id=%s from %s", user.id, request.remote_addr)
         flash("Password reset successfully. Please log in.", "success")
         return redirect(url_for("main.login"))
     return render_template("reset_password.html", form=form)
@@ -409,6 +467,8 @@ def stash():
             
             flash("Stash saved successfully!", "success")
             logger.info(f"New stash created: {new_stash.id}")
+        except HTTPException:
+            raise
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error creating stash: {str(e)}")
@@ -462,6 +522,8 @@ def view_stashes():
             current_tag=tag_name,
             search_query=search_query
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading stashes: {str(e)}")
         flash("An error occurred while loading stashes.", "error")
@@ -475,6 +537,8 @@ def view_stash(stash_id):
     try:
         stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
         return render_template("viewstash.html", stash=stash.to_dict())
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading stash {stash_id}: {str(e)}")
         flash("An error occurred while loading the stash.", "error")
@@ -494,6 +558,8 @@ def update_checklist(stash_id):
         stash.set_checklist(items)
         db.session.commit()
         return {"success": True}, 200
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error updating checklist {stash_id}: {str(e)}")
@@ -534,6 +600,8 @@ def edit_stash(stash_id):
                 flash("Stash updated successfully!", "success")
                 logger.info(f"Stash updated: {stash_id}")
                 return redirect(url_for("main.view_stashes"))
+            except HTTPException:
+                raise
             except Exception as e:
                 db.session.rollback()
                 logger.error(f"Error updating stash {stash_id}: {str(e)}")
@@ -546,6 +614,8 @@ def edit_stash(stash_id):
         form.checklist.data = json.dumps(stash.get_checklist())
         
         return render_template("editstash.html", form=form, stash=stash.to_dict())
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in edit_stash {stash_id}: {str(e)}")
         flash("An error occurred while editing the stash.", "error")
@@ -567,6 +637,8 @@ def delete_stash(stash_id):
             db.session.commit()
             flash("Stash deleted successfully!", "success")
             logger.info(f"Stash deleted: {stash_id}")
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error deleting stash {stash_id}: {str(e)}")
@@ -583,6 +655,8 @@ def view_collections():
     try:
         collections = get_user_collections_with_counts(g.user.id)
         return render_template("collections.html", collections=collections)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading collections: {str(e)}")
         flash("An error occurred while loading collections.", "error")
@@ -613,6 +687,8 @@ def create_collection():
             flash(f"Collection '{form.name.data}' created successfully!", "success")
             logger.info(f"New collection created: {new_collection.id}")
             return redirect(url_for("main.view_collections"))
+        except HTTPException:
+            raise
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error creating collection: {str(e)}")
@@ -639,6 +715,8 @@ def delete_collection(collection_id):
             db.session.commit()
             flash(f"Collection '{collection.name}' deleted successfully!", "success")
             logger.info(f"Collection deleted: {collection_id}")
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error deleting collection {collection_id}: {str(e)}")
@@ -655,6 +733,8 @@ def view_tags():
     try:
         tags = get_user_tags_with_counts(g.user.id)
         return render_template("tags.html", tags=tags)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading tags: {str(e)}")
         flash("An error occurred while loading tags.", "error")
@@ -696,6 +776,8 @@ def delete_tag(tag_id):
                 logger.info(f"Tag removed from user stashes: {tag_id}")
 
             db.session.commit()
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error deleting tag {tag_id}: {str(e)}")
@@ -727,6 +809,8 @@ def export_data():
             as_attachment=True,
             download_name=f'ruff-export-{g.user.username}.json'
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error exporting data: {str(e)}")
         flash("Failed to export data. Please try again.", "error")
@@ -752,8 +836,10 @@ def export_stash(stash_id):
             file,
             mimetype='text/plain',
             as_attachment=True,
-            download_name=f'stash-{stash.preview[:20]}.txt'
+            download_name=f'stash-{safe_filename_part(stash.title or stash.preview)}.txt'
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error exporting stash: {str(e)}")
         flash("Failed to export stash. Please try again.", "error")
@@ -836,7 +922,7 @@ def import_shared_stash():
         db.session.commit()
         logger.info(f"Shared stash imported for user {g.user.username}: {new_stash.id}")
         return {"success": True, "id": new_stash.id}, 200
-    except RequestEntityTooLarge:
+    except HTTPException:
         raise
     except Exception as e:
         db.session.rollback()
@@ -1047,8 +1133,10 @@ def import_data():
         flash(message, "success")
         return redirect(url_for("main.view_stashes"))
 
-    except RequestEntityTooLarge:
+    except HTTPException:
+
         raise
+
     except Exception as e:
         logger.error(f"Error importing data: {str(e)}")
         flash("Import failed. Please check the file and try again.", "error")
@@ -1086,6 +1174,10 @@ def bulk_delete():
         logger.info(f"User {g.user.username} deleted {deleted_count} stashes via bulk action")
         
         return {"success": True, "deleted": deleted_count}, 200
+    
+    except HTTPException:
+    
+        raise
     
     except Exception as e:
         db.session.rollback()
@@ -1134,6 +1226,10 @@ def bulk_move():
         logger.info(f"User {g.user.username} moved {moved_count} stashes via bulk action")
         
         return {"success": True, "moved": moved_count}, 200
+    
+    except HTTPException:
+    
+        raise
     
     except Exception as e:
         db.session.rollback()

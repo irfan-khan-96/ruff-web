@@ -127,6 +127,14 @@
         return;
     }
 
+    socket.on("join_refused", ({ reason } = {}) => {
+        const message = reason === "room_full"
+            ? "That share is already in progress with someone else."
+            : "Too many attempts. Wait a minute and try again.";
+        if (isSender) setShareStatus(message);
+        else setReceiveStatus(message);
+    });
+
     socket.on("signal", async (payload) => {
         if (!peerConnection) return;
 

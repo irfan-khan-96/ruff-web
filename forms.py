@@ -7,9 +7,15 @@ from wtforms import TextAreaField, SubmitField, StringField, SelectField, Passwo
 from wtforms.validators import DataRequired, Length, Optional, ValidationError, Email, EqualTo
 from config import get_config
 from models import User
-from sqlalchemy import func
 
 config = get_config()
+
+# Password policy for new passwords (sign-up and reset)
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
+PASSWORD_LENGTH_MESSAGE = (
+    f"Password must be between {PASSWORD_MIN_LENGTH} and {PASSWORD_MAX_LENGTH} characters."
+)
 
 
 class StashForm(FlaskForm):
@@ -103,7 +109,11 @@ class LoginForm(FlaskForm):
     )
     password = PasswordField(
         "Password",
-        validators=[DataRequired(message="Password is required.")]
+        validators=[
+            DataRequired(message="Password is required."),
+            # No minimum here (older accounts may predate the policy), only the cap
+            Length(max=PASSWORD_MAX_LENGTH, message=PASSWORD_LENGTH_MESSAGE),
+        ]
     )
     remember = BooleanField("Remember me")
     submit = SubmitField("Login")
@@ -130,7 +140,7 @@ class SignupForm(FlaskForm):
         "Password",
         validators=[
             DataRequired(message="Password is required."),
-            Length(min=6, message="Password must be at least 6 characters.")
+            Length(min=PASSWORD_MIN_LENGTH, max=PASSWORD_MAX_LENGTH, message=PASSWORD_LENGTH_MESSAGE)
         ]
     )
     confirm_password = PasswordField(
@@ -147,11 +157,8 @@ class SignupForm(FlaskForm):
         if User.query.filter_by(username=field.data).first():
             raise ValidationError("Username already exists.")
     
-    def validate_email(self, field):
-        """Check if email is already registered."""
-        email = field.data.strip().lower()
-        if User.query.filter(func.lower(User.email) == email).first():
-            raise ValidationError("Email already registered.")
+    # No "email already registered" validator: it would reveal who has an
+    # account. The signup route handles existing emails without saying so.
 
 
 class ResendVerificationForm(FlaskForm):
@@ -187,7 +194,7 @@ class ResetPasswordForm(FlaskForm):
         "New Password",
         validators=[
             DataRequired(message="Password is required."),
-            Length(min=6, message="Password must be at least 6 characters.")
+            Length(min=PASSWORD_MIN_LENGTH, max=PASSWORD_MAX_LENGTH, message=PASSWORD_LENGTH_MESSAGE)
         ]
     )
     confirm_password = PasswordField(

@@ -23,4 +23,5 @@ test-results/
 test_*.py
 conftest.py
 requirements-dev.txt
+init_db.py
 TESTING_REPORT.md

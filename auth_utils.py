@@ -103,7 +103,12 @@ def send_email(recipient: str, subject: str, body: str) -> None:
     from_addr = current_app.config.get("SMTP_FROM")
 
     if not host or not from_addr:
-        logger.warning("SMTP not configured. Email to %s | %s | %s", recipient, subject, body)
+        if current_app.debug:
+            # Development convenience: the verification/reset link appears in the log
+            logger.warning("SMTP not configured. Email to %s | %s | %s", recipient, subject, body)
+        else:
+            # Never log the body in production: it contains live account tokens
+            logger.error("SMTP not configured; email to %s not sent (%s)", recipient, subject)
         return
 
     port = current_app.config.get("SMTP_PORT", 587)

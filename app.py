@@ -40,12 +40,16 @@ def create_app(config_name: str = None) -> Flask:
     if not (app.config.get("DEBUG") or app.config.get("TESTING")):
         insecure = [
             key for key in ("SECRET_KEY", "SECURITY_PASSWORD_SALT")
-            if app.config.get(key) in INSECURE_DEFAULTS or not app.config.get(key)
+            if app.config.get(key) in INSECURE_DEFAULTS
+            or len(app.config.get(key) or "") < MIN_SECRET_LENGTH
         ]
         if insecure:
             raise RuntimeError(
-                f"{', '.join(insecure)} must be set to a strong random value in production."
+                f"{', '.join(insecure)} must be set to a random value of at least "
+                f"{MIN_SECRET_LENGTH} characters in production."
             )
+
+    init_error_reporting(app)
 
     # Behind a reverse proxy, take the client IP/scheme from X-Forwarded-*
     # so rate limits apply per client rather than to the proxy's address
@@ -126,6 +130,23 @@ def create_app(config_name: str = None) -> Flask:
     logger.info("Application initialized (migrations must be applied separately)")
     
     return app
+
+
+MIN_SECRET_LENGTH = 32
+
+
+def init_error_reporting(app: Flask) -> None:
+    """Send unhandled errors to Sentry when SENTRY_DSN is set (alerting)."""
+    dsn = os.getenv("SENTRY_DSN")
+    if not dsn or app.config.get("TESTING"):
+        return
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=os.getenv("FLASK_ENV", "production"),
+        send_default_pii=False,  # no IPs, cookies or user details
+        traces_sample_rate=0.0,
+    )
 
 
 def get_csp_nonce() -> str:
@@ -259,6 +280,20 @@ def register_error_handlers(app: Flask) -> None:
         """Handle 400 errors."""
         logger.warning(f"400 error: {error}")
         return render_template("errors/400.html"), 400
+
+    @app.errorhandler(429)
+    def rate_limited_error(error):
+        """Log rate-limit hits as security events (brute force, scraping)."""
+        logging.getLogger("ruff.security").warning(
+            "Rate limit hit: %s %s from %s (%s)",
+            request.method, request.path, request.remote_addr, error.description,
+        )
+        if request.is_json:
+            return {"error": "Too many requests"}, 429
+        return render_template(
+            "errors/400.html",
+            message="Too many attempts. Please wait a minute and try again.",
+        ), 429
 
     @app.errorhandler(413)
     def payload_too_large_error(error):

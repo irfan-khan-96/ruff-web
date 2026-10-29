@@ -36,7 +36,7 @@ alembic upgrade head
 ```
 For a fresh dev-only database without migrations:
 ```bash
-python init_db.py init
+FLASK_ENV=development python init_db.py init
 ```
 5. Run the app:
 ```bash
@@ -106,6 +106,9 @@ rm -f ruff.db instance/ruff.db
 ```bash
 alembic upgrade head
 ```
+
+## Security
+See [SECURITY.md](SECURITY.md) for the OWASP Top 10 self-assessment, known limitations, and how to report a vulnerability.
 
 ## Production Notes
 - Set strong `SECRET_KEY` and `SECURITY_PASSWORD_SALT` values.
