@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Teachers Lounge · {{ app_name }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1>Teachers Lounge</h1>
+    <p>Settings, backups and the small print.</p>
+</div>
+
+<div class="lounge">
+    <section class="card" aria-labelledby="theme-title">
+        <h2 id="theme-title">Look</h2>
+        <fieldset class="options" style="border: 0; padding: 0; margin: 0;">
+            <legend class="sr-only">Theme</legend>
+            <label class="option"><input type="radio" name="theme" value="light"> Notebook</label>
+            <label class="option"><input type="radio" name="theme" value="dark"> Chalkboard</label>
+            <label class="option"><input type="radio" name="theme" value="system"> Match my device</label>
+        </fieldset>
+    </section>
+
+    <section class="card" id="backup" aria-labelledby="backup-title">
+        <h2 id="backup-title">Backup</h2>
+        <p>Download everything you've stashed ({{ stash_count }} stash{{ "" if stash_count == 1 else "es" }}) as a file, or bring a backup back in.</p>
+        <p><a class="btn btn-quiet" href="{{ url_for('main.export_data') }}">Download backup</a></p>
+        <form method="POST" action="{{ url_for('main.import_data') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="field">
+                <label for="file-input">Restore from a backup</label>
+                <input type="file" id="file-input" name="file" accept=".json,application/json" required>
+                <span class="hint">Stashes you already have are skipped.</span>
+            </div>
+            <button type="submit" class="btn">Restore</button>
+        </form>
+    </section>
+
+    <section class="card" aria-labelledby="account-title">
+        <h2 id="account-title">You</h2>
+        <p>Logged in as <strong>{{ g.user.username }}</strong> ({{ g.user.email }}).</p>
+        <form method="POST" action="{{ url_for('main.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-quiet logout-link">Log out</button>
+        </form>
+    </section>
+
+    <section class="card about" aria-labelledby="about-title">
+        <h2 id="about-title">About</h2>
+        <p>{{ app_name }} is a pocket notebook: jot something down, stash it, and pass notes like it's recess.</p>
+        <p>It's a web companion inspired by <a href="https://www.mtrostyle.net/ruff/" rel="noopener">ruff</a>, the writing app, and a love letter to the '90s Saturday-morning cartoons its maker grew up on. Built by Irfan.</p>
+    </section>
+</div>
+{% endblock %}

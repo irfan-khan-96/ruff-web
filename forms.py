@@ -3,12 +3,9 @@ Flask-WTF forms for the Ruff application.
 """
 
 from flask_wtf import FlaskForm
-from wtforms import TextAreaField, SubmitField, StringField, SelectField, PasswordField, BooleanField, HiddenField
-from wtforms.validators import DataRequired, Length, Optional, ValidationError, Email, EqualTo
-from config import get_config
+from wtforms import SubmitField, StringField, PasswordField, BooleanField
+from wtforms.validators import DataRequired, Length, ValidationError, Email, EqualTo
 from models import User
-
-config = get_config()
 
 # Password policy for new passwords (sign-up and reset)
 PASSWORD_MIN_LENGTH = 8
@@ -16,88 +13,6 @@ PASSWORD_MAX_LENGTH = 128
 PASSWORD_LENGTH_MESSAGE = (
     f"Password must be between {PASSWORD_MIN_LENGTH} and {PASSWORD_MAX_LENGTH} characters."
 )
-
-
-class StashForm(FlaskForm):
-    """Form for creating a new stash."""
-
-    title = StringField(
-        "Title",
-        validators=[
-            Optional(),
-            Length(max=200, message="Title must be 200 characters or less."),
-        ],
-        render_kw={"placeholder": "Give it a title (optional)"}
-    )
-    body = TextAreaField(
-        "Body",
-        validators=[
-            DataRequired(message="Please enter some content."),
-            Length(
-                min=1,
-                max=config.MAX_STASH_LENGTH,
-                message=f"Body must be between 1 and {config.MAX_STASH_LENGTH} characters.",
-            ),
-        ],
-    )
-    checklist = HiddenField()
-    collection = SelectField("Collection", coerce=int, validators=[Optional()])
-    tags = StringField(
-        "Tags",
-        validators=[Optional()],
-        render_kw={"placeholder": "Add tags separated by commas (e.g., python, web, tutorial)"}
-    )
-    submit = SubmitField("Stash It")
-
-
-class EditStashForm(FlaskForm):
-    """Form for editing an existing stash."""
-
-    title = StringField(
-        "Title",
-        validators=[
-            Optional(),
-            Length(max=200, message="Title must be 200 characters or less."),
-        ],
-        render_kw={"placeholder": "Give it a title (optional)"}
-    )
-    body = TextAreaField(
-        "Body",
-        validators=[
-            DataRequired(message="Please enter some content."),
-            Length(
-                min=1,
-                max=config.MAX_STASH_LENGTH,
-                message=f"Body must be between 1 and {config.MAX_STASH_LENGTH} characters.",
-            ),
-        ],
-    )
-    checklist = HiddenField()
-    collection = SelectField("Collection", coerce=int, validators=[Optional()])
-    tags = StringField(
-        "Tags",
-        validators=[Optional()],
-        render_kw={"placeholder": "Add tags separated by commas (e.g., python, web, tutorial)"}
-    )
-    submit = SubmitField("Update Stash")
-
-
-class CollectionForm(FlaskForm):
-    """Form for creating and editing collections."""
-    
-    name = StringField(
-        "Collection Name",
-        validators=[
-            DataRequired(message="Please enter a collection name."),
-            Length(min=1, max=100, message="Collection name must be between 1 and 100 characters.")
-        ]
-    )
-    description = TextAreaField(
-        "Description",
-        validators=[Optional(), Length(max=500)],
-        render_kw={"rows": 3, "placeholder": "Optional description"}
-    )
-    submit = SubmitField("Create Collection")
 
 
 class LoginForm(FlaskForm):

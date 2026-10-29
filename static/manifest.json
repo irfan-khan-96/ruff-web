@@ -1,16 +1,21 @@
 {
   "name": "Ruff",
   "short_name": "Ruff",
+  "description": "A pocket notebook: jot things down, stash them, and pass notes like it's recess.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FFFDF6",
-  "theme_color": "#FFB02E",
+  "background_color": "#fffdf6",
+  "theme_color": "#fffdf6",
   "icons": [
     {
       "src": "/static/images/mascot.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
+  ],
+  "shortcuts": [
+    { "name": "New note", "url": "/" },
+    { "name": "Pass a note", "url": "/pass" }
   ]
 }

@@ -1,291 +1,65 @@
 {% extends "base.html" %}
 
-{% block title %}Your Stashes - Ruff{% endblock %}
+{% block title %}Stash · {{ app_name }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
 
 {% block content %}
-    <div class="stash-container">
-        <!-- Sidebar with filters -->
-        <aside class="stash-sidebar">
-            <h3>Filter & Search</h3>
-            
-            <!-- Search Box -->
-            <div class="filter-section">
-                <form method="get" action="{{ url_for('main.view_stashes') }}" class="search-form">
-                    <input type="text" name="search" placeholder="Search stashes..." value="{{ search_query or '' }}" class="form-control">
-                    <button type="submit" class="btn-search">Search</button>
-                </form>
-            </div>
-            
-            <!-- Collections Filter -->
-            {% if collections %}
-            <div class="filter-section">
-                <h4>Collections</h4>
-                <ul class="filter-list">
-                    <li><a href="{{ url_for('main.view_stashes') }}" class="filter-link {% if not current_collection %}active{% endif %}">All Collections</a></li>
-                    {% for collection in collections %}
-                    <li>
-                        <a href="{{ url_for('main.view_stashes', collection=collection.id) }}" class="filter-link {% if current_collection == collection.id %}active{% endif %}">
-                            {{ collection.name }} ({{ collection.stash_count }})
-                        </a>
-                    </li>
-                    {% endfor %}
-                </ul>
-                <a href="{{ url_for('main.view_collections') }}" class="btn-small">Manage Collections</a>
-            </div>
-            {% endif %}
-            
-            <!-- Tags Filter -->
-            {% if tags %}
-            <div class="filter-section">
-                <h4>Tags</h4>
-                <div class="tag-cloud">
-                    {% for tag in tags %}
-                    <a href="{{ url_for('main.view_stashes', tag=tag.name) }}" class="tag-button {% if current_tag == tag.name %}active{% endif %}">
-                        #{{ tag.name }} ({{ tag.stash_count }})
-                    </a>
-                    {% endfor %}
-                </div>
-                <a href="{{ url_for('main.view_tags') }}" class="btn-small">Manage Tags</a>
-            </div>
-            {% endif %}
-        </aside>
-        
-        <!-- Main content -->
-        <section class="stash-main" aria-label="Stashes">
-            <div class="page-hero">
-                <div class="page-hero-text">
-                    <h1>Your Stashes</h1>
-                    <p class="page-sub">Stay organized and ship faster — filters and bulk actions are ready.</p>
-                </div>
-                <div class="page-hero-actions">
-                    <a class="btn btn-secondary" href="{{ url_for('main.index') }}">New Stash</a>
-                    <a class="btn btn-secondary" href="{{ url_for('main.export_data') }}">Export</a>
-                </div>
-            </div>
-            <div class="filter-badges">
-                {% if search_query %}<span class="filter-badge">Search: "{{ search_query }}"</span>{% endif %}
-                {% if current_collection %}<span class="filter-badge">Collection: {{ current_collection }}</span>{% endif %}
-                {% if current_tag %}<span class="filter-badge">Tag: #{{ current_tag }}</span>{% endif %}
-            </div>
-            
-            <!-- Bulk Actions Bar -->
-            <div id="bulk-actions-bar" class="bulk-actions-bar" style="display: none;">
-                <div class="bulk-info">
-                    <span id="selected-count">0</span> stash(es) selected
-                </div>
-                <div class="bulk-buttons">
-                    <button id="select-all-btn" class="btn btn-secondary">Select All</button>
-                    <button id="deselect-all-btn" class="btn btn-secondary">Deselect All</button>
-                    <select id="bulk-move-to" class="bulk-select">
-                        <option value="">Move to Collection...</option>
-                        <option value="-1">Remove from Collection</option>
-                        {% for collection in collections %}
-                        <option value="{{ collection.id }}">{{ collection.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <button id="bulk-delete-btn" class="btn btn-danger">Delete Selected</button>
-                </div>
-            </div>
-            
-            <ul class="stash-list">
-                {% for stash in stashes %}
-                    <li class="stash-item">
-                        <div class="stash-card polaroid">
-                            <div class="stash-checkbox">
-                                <input type="checkbox" class="stash-select" data-stash-id="{{ stash.id }}" aria-label="Select {{ stash.title or stash.preview }}" />
-                            </div>
-                            <div class="stash-info">
-                                <div class="stash-header">
-                                    <span class="stash-title">{{ stash.title or stash.preview }}</span>
-                                </div>
-                                {% if stash.title %}
-                                <div class="stash-preview">{{ stash.preview }}</div>
-                                {% endif %}
-                                <div class="stash-meta">
-                                    {% if stash.collection_name %}<span class="stash-collection">📁 {{ stash.collection_name }}</span>{% endif %}
-                                    {% if stash.checklist and stash.checklist|length > 0 %}
-                                    <span class="stash-checklist-count">✅ {{ stash.checklist|length }} items</span>
-                                    {% endif %}
-                                    <span class="stash-date">Added {{ stash.created_at | replace(' ', ' · ', 1) }}</span>
-                                </div>
-                                {% if stash.tags %}
-                                <div class="stash-tags">
-                                    {% for tag in stash.tags %}
-                                    <a href="{{ url_for('main.view_stashes', tag=tag) }}" class="tag-small">#{{ tag }}</a>
-                                    {% endfor %}
-                                </div>
-                                {% endif %}
-                            </div>
-                            <div class="stash-actions">
-                                <a href="{{ url_for('main.view_stash', stash_id=stash.id) }}" class="action-button">View</a>
-                                <a href="{{ url_for('main.edit_stash', stash_id=stash.id) }}" class="action-button">Edit</a>
-                                <form action="{{ url_for('main.delete_stash', stash_id=stash.id) }}" method="POST" class="delete-form">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <button type="submit" class="action-button delete-button" data-confirm="Delete this stash?">Delete</button>
-                                </form>
-                            </div>
-                        </div>
-                    </li>
-                {% else %}
-                    <li class="empty-state">
-                        <div class="empty-card polaroid">
-                            <div class="empty-title">No stashes yet</div>
-                            <div class="empty-sub">Capture your first note or tweak your filters.</div>
-                            <div class="empty-actions">
-                                <a class="btn btn-secondary" href="{{ url_for('main.index') }}">New Stash</a>
-                                <a class="btn btn-secondary" href="{{ url_for('main.view_stashes') }}">Reset Filters</a>
-                            </div>
-                        </div>
-                    </li>
-                {% endfor %}
-            </ul>
-        </section>
-    </div>
+<div class="page-head">
+    <h1>Your stash</h1>
+    <p>Everything you've kept, newest first.</p>
+</div>
 
-<script nonce="{{ csp_nonce() }}">
-document.addEventListener('DOMContentLoaded', function() {
-    const bulkActionsBar = document.getElementById('bulk-actions-bar');
-    const selectAllBtn = document.getElementById('select-all-btn');
-    const deselectAllBtn = document.getElementById('deselect-all-btn');
-    const bulkMoveSelect = document.getElementById('bulk-move-to');
-    const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
-    const selectedCountSpan = document.getElementById('selected-count');
-    const stashList = document.querySelector('.stash-list');
-    
-    // Check if elements exist
-    if (!bulkActionsBar || !stashList) {
-        console.log('Bulk actions elements not found');
-        return;
-    }
-    
-    function getCheckboxes() {
-        return document.querySelectorAll('.stash-select');
-    }
-    
-    function updateBulkActionsBar() {
-        const checkboxes = getCheckboxes();
-        const selectedStashes = Array.from(checkboxes).filter(cb => cb.checked);
-        const count = selectedStashes.length;
-        
-        if (count > 0) {
-            bulkActionsBar.style.display = 'flex';
-            selectedCountSpan.textContent = count;
-        } else {
-            bulkActionsBar.style.display = 'none';
-        }
-    }
-    
-    // Event delegation for checkbox changes
-    stashList.addEventListener('change', function(e) {
-        if (e.target.classList.contains('stash-select')) {
-            updateBulkActionsBar();
-        }
-    });
-    
-    // Select all functionality
-    if (selectAllBtn) {
-        selectAllBtn.addEventListener('click', () => {
-            const checkboxes = getCheckboxes();
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = true;
-            });
-            updateBulkActionsBar();
-        });
-    }
-    
-    // Deselect all functionality
-    if (deselectAllBtn) {
-        deselectAllBtn.addEventListener('click', () => {
-            const checkboxes = getCheckboxes();
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = false;
-            });
-            updateBulkActionsBar();
-        });
-    }
-    
-    // Bulk move to collection
-    if (bulkMoveSelect) {
-        bulkMoveSelect.addEventListener('change', async (e) => {
-            if (!e.target.value) return;
-            
-            const checkboxes = getCheckboxes();
-            const selectedStashes = Array.from(checkboxes)
-                .filter(cb => cb.checked)
-                .map(cb => cb.dataset.stashId);
-            
-            if (selectedStashes.length === 0) {
-                alert('Please select at least one stash.');
-                return;
-            }
-            
-            try {
-                const response = await fetch('{{ url_for("main.bulk_move") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({
-                        stash_ids: selectedStashes,
-                        collection_id: e.target.value === '-1' ? null : parseInt(e.target.value)
-                    })
-                });
-                
-                if (response.ok) {
-                    location.reload();
-                } else {
-                    alert('Error moving stashes. Please try again.');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error moving stashes.');
-            }
-            
-            bulkMoveSelect.value = '';
-        });
-    }
-    
-    // Bulk delete
-    if (bulkDeleteBtn) {
-        bulkDeleteBtn.addEventListener('click', async () => {
-            const checkboxes = getCheckboxes();
-            const selectedStashes = Array.from(checkboxes)
-                .filter(cb => cb.checked)
-                .map(cb => cb.dataset.stashId);
-            
-            if (selectedStashes.length === 0) {
-                alert('Please select at least one stash.');
-                return;
-            }
-            
-            if (!confirm(`Delete ${selectedStashes.length} stash(es)? This cannot be undone.`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch('{{ url_for("main.bulk_delete") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({
-                        stash_ids: selectedStashes
-                    })
-                });
-                
-                if (response.ok) {
-                    location.reload();
-                } else {
-                    alert('Error deleting stashes. Please try again.');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error deleting stashes.');
-            }
-        });
-    }
-});
-</script>
+<form class="search" method="GET" action="{{ url_for('main.view_stashes') }}" role="search">
+    <label for="search" class="sr-only">Search your stash</label>
+    <input id="search" class="input" type="search" name="q" value="{{ search_query or '' }}" placeholder="Search your stash">
+    {% if current_tag %}<input type="hidden" name="tag" value="{{ current_tag }}">{% endif %}
+    <button type="submit" class="btn btn-quiet">Search</button>
+</form>
+
+{% if tags %}
+<nav class="chips" aria-label="Filter by tag">
+    <a class="chip" href="{{ url_for('main.view_stashes', q=search_query) }}" {% if not current_tag %}aria-current="true"{% endif %}>All</a>
+    {% for tag in tags %}
+    <a class="chip" href="{{ url_for('main.view_stashes', tag=tag.name, q=search_query) }}" {% if current_tag == tag.name %}aria-current="true"{% endif %}>#{{ tag.name }} <span class="sr-only">({{ tag.stash_count }})</span></a>
+    {% endfor %}
+</nav>
+{% endif %}
+
+{% if stashes %}
+<ul class="stash-list">
+    {% for stash in stashes %}
+    <li>
+        <a class="stash-card" href="{{ url_for('main.view_stash', stash_id=stash.id) }}">
+            <span class="stash-card-title">{{ stash.title or "Untitled" }}</span>
+            {% if stash.preview and stash.preview != stash.title %}
+            <span class="stash-card-preview">{{ stash.preview }}</span>
+            {% endif %}
+            <span class="stash-card-meta">
+                <span>{{ stash.updated_ago }}</span>
+                {% if stash.checklist %}
+                <span>☑ {{ stash.checklist | selectattr('done') | list | length }}/{{ stash.checklist | length }} done</span>
+                {% endif %}
+                {% for tag in stash.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
+            </span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% if has_more %}
+<div class="load-more">
+    <a class="btn btn-quiet" href="{{ url_for('main.view_stashes', page=page + 1, tag=current_tag, q=search_query) }}">Load more</a>
+</div>
+{% endif %}
+{% elif search_query or current_tag %}
+<div class="empty">
+    <span class="hand">Nothing here.</span>
+    <p>No stash matches that. <a href="{{ url_for('main.view_stashes') }}">Show everything</a></p>
+</div>
+{% else %}
+<div class="empty">
+    <span class="hand">Your stash is empty.</span>
+    <p>Write something on the sheet and tap <strong>Stash it</strong>.</p>
+    <a class="btn" href="{{ url_for('main.index') }}">Start writing</a>
+</div>
+{% endif %}
 {% endblock %}

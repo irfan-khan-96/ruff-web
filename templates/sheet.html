@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}{{ stash.title if stash else "Write" }} · {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="sheet-layout">
+    <div class="sheet-main">
+        <h1 class="sr-only">{{ "Your stash" if stash else "Write something" }}</h1>
+        <form id="sheet" class="sheet tape" method="POST" action="{{ url_for('main.stash') }}"
+              data-stash-id="{{ stash.id if stash else '' }}"
+              data-version="{{ stash.updated_at.isoformat() if stash else '' }}"
+              data-logged-in="{{ 'yes' if g.user else 'no' }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="stash_id" value="{{ stash.id if stash else '' }}">
+            <label for="sheet-text" class="sr-only">Your note</label>
+            <textarea id="sheet-text" name="text" class="sheet-text" maxlength="50000" spellcheck="true"
+                      placeholder="Start writing… the first line becomes the title"
+                      {% if not stash %}autofocus{% endif %}>{{ stash.body if stash else '' }}</textarea>
+            <div class="sheet-bar">
+                <label for="sheet-tags" class="sr-only">Tags</label>
+                <input id="sheet-tags" name="tags" class="sheet-tags" autocomplete="off"
+                       placeholder="#tags, comma separated"
+                       value="{{ stash.tags | map(attribute='name') | sort | join(', ') if stash else '' }}">
+                <button type="button" class="btn btn-quiet" id="roster-add" title="Add a to-do (or type [ ] at the start of a line)">☐ To-do</button>
+                {% if g.user %}
+                <button type="submit" class="btn" id="stash-button">{{ "Save" if stash else "Stash it" }}</button>
+                {% else %}
+                <a class="btn" href="{{ url_for('main.signup') }}">Sign up to stash</a>
+                {% endif %}
+            </div>
+            <div class="sheet-status">
+                <span id="sheet-status" aria-live="polite">{% if stash %}Stashed · {{ stash.to_dict().updated_ago }}{% elif not g.user %}Your note stays on this device until you stash it.{% endif %}</span>
+                <span id="word-count"></span>
+            </div>
+        </form>
+
+        {% if stash %}
+        <div class="sheet-actions">
+            <a class="btn btn-quiet" href="{{ url_for('main.index') }}">New sheet</a>
+            <a class="btn btn-quiet" href="{{ url_for('main.share_stash', stash_id=stash.id) }}">Pass it nearby</a>
+            <form method="POST" action="{{ url_for('main.relay_start_from_stash', stash_id=stash.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-quiet">Start a relay</button>
+            </form>
+            <a class="btn btn-quiet" href="{{ url_for('main.export_stash', stash_id=stash.id) }}">Download</a>
+            <form method="POST" action="{{ url_for('main.delete_stash', stash_id=stash.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger" data-confirm="Toss this stash? There's no undo.">Toss it</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <aside class="sheet-side" aria-label="Sheet extras">
+        {% set roster = stash.get_checklist() if stash else [] %}
+        <section class="roster" id="roster" aria-labelledby="roster-title" {% if not roster %}hidden{% endif %}>
+            <h2 id="roster-title">Recess Roster</h2>
+            <ul id="roster-list">
+                {% for item in roster %}
+                <li class="{{ 'done' if item.done }}"><label><input type="checkbox" {{ 'checked' if item.done }} disabled><span>{{ item.text }}</span></label></li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        {% if recent %}
+        <nav class="recent card" aria-labelledby="recent-title">
+            <h2 id="recent-title">Recently stashed</h2>
+            <ul>
+                {% for item in recent %}
+                <li><a href="{{ url_for('main.view_stash', stash_id=item.id) }}" {% if stash and item.id == stash.id %}aria-current="page"{% endif %}>{{ item.title or "Untitled" }}</a></li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+    </aside>
+</div>
+{% endblock %}

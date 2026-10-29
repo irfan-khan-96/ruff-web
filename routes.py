@@ -20,16 +20,13 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from io import BytesIO
 
 from forms import (
-    StashForm,
-    EditStashForm,
-    CollectionForm,
     LoginForm,
     SignupForm,
     ResendVerificationForm,
     ForgotPasswordForm,
     ResetPasswordForm,
 )
-from models import db, Stash, Tag, Collection, User, RelaySession, RelayEntry
+from models import db, Stash, Tag, User, RelaySession, RelayEntry
 from export_import import (
     export_to_json,
     export_stash_to_text,
@@ -87,16 +84,18 @@ def readyz():
 
 @bp.route("/sw.js")
 def service_worker():
-    """Serve the service worker at the app root."""
-    return send_from_directory(current_app.static_folder, "sw.js")
+    """Serve the service worker at the app root (never long-cached, so updates land)."""
+    return send_from_directory(current_app.static_folder, "sw.js", max_age=0)
 
 
 def login_required(f):
     """Decorator to require login for a route."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('You must be logged in to access this page.', 'warning')
+        if g.get("user") is None:
+            if wants_json():
+                return {"error": "login_required", "login_url": url_for("main.login")}, 401
+            flash("Log in first, then you're good to go.", "info")
             return redirect(url_for('main.login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -106,19 +105,6 @@ def login_required(f):
 def load_logged_in_user():
     """Load the logged-in user from session."""
     g.user = load_session_user(session)
-
-
-def get_collection_choices():
-    """Get all collections for current user."""
-    try:
-        if g.user is None:
-            return []
-        return [(c.id, c.name) for c in Collection.query.filter_by(user_id=g.user.id).all()]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching collections: {e}")
-        return []
 
 
 def get_user_tags_with_counts(user_id: int):
@@ -134,31 +120,6 @@ def get_user_tags_with_counts(user_id: int):
     return [
         {"id": tag.id, "name": tag.name, "stash_count": count}
         for tag, count in rows
-    ]
-
-
-def get_user_collections_with_counts(user_id: int):
-    """Return collections for a user with stash counts."""
-    rows = (
-        db.session.query(Collection, func.count(Stash.id))
-        .outerjoin(
-            Stash,
-            (Stash.collection_id == Collection.id) & (Stash.user_id == user_id),
-        )
-        .filter(Collection.user_id == user_id)
-        .group_by(Collection.id)
-        .order_by(Collection.created_at.desc())
-        .all()
-    )
-    return [
-        {
-            "id": collection.id,
-            "name": collection.name,
-            "description": collection.description,
-            "stash_count": count,
-            "created_at": collection.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-        }
-        for collection, count in rows
     ]
 
 
@@ -194,29 +155,6 @@ def generate_relay_code(length: int = 6) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-def parse_checklist(raw: str):
-    """Parse checklist JSON into a normalized list of dicts."""
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw)
-    except Exception:
-        return []
-    if not isinstance(data, list):
-        return []
-    items = []
-    for item in data:
-        if isinstance(item, dict):
-            text = str(item.get("text", "")).strip()
-            done = bool(item.get("done", False))
-        else:
-            text = str(item).strip()
-            done = False
-        if text:
-            items.append({"text": text, "done": done})
-    return items
-
-
 def _login_username_key() -> str:
     """Rate-limit key for login attempts against one account, from any IP."""
     return "login-user:" + (request.form.get("username") or "").strip().lower()
@@ -248,11 +186,11 @@ def login():
             security_log.warning(
                 "Failed login for username=%r from %s", form.username.data, request.remote_addr
             )
-            flash("Invalid username or password.", "danger")
+            flash("That username and password don't match.", "danger")
             return redirect(url_for("main.login"))
 
         if current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True) and not user.email_verified:
-            flash("Please verify your email before logging in.", "warning")
+            flash("Check your email to verify your account first.", "warning")
             return redirect(url_for("main.resend_verification", email=user.email))
         
         session.clear()
@@ -260,7 +198,7 @@ def login():
         session['pw'] = password_fingerprint(user)
         session.permanent = bool(form.remember.data)
         logger.info(f"User {user.username} logged in")
-        flash(f"Welcome back, {user.username}!", "success")
+        flash(f"Welcome back, {user.username}.", "success")
         return redirect(url_for("main.index"))
     
     return render_template("login.html", form=form)
@@ -287,7 +225,7 @@ def signup():
                 "If not, you can ignore this message.",
             )
             security_log.info("Signup attempted with an existing email from %s", request.remote_addr)
-            flash("Account created! Check your email to verify before logging in.", "success")
+            flash("Almost there. Check your email to verify your account.", "success")
             return redirect(url_for("main.login"))
 
         user = User(
@@ -307,13 +245,13 @@ def signup():
                 "Verify your Ruff account",
                 f"Verify your email: {verify_url}",
             )
-            flash("Account created! Check your email to verify before logging in.", "success")
+            flash("Almost there. Check your email to verify your account.", "success")
             return redirect(url_for("main.login"))
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error creating user: {e}")
-            flash("An error occurred during registration. Please try again.", "danger")
+            flash("Couldn't create your account. Try again?", "danger")
             db.session.rollback()
     
     return render_template("signup.html", form=form)
@@ -325,7 +263,7 @@ def logout():
     if g.user is not None:
         logger.info(f"User {g.user.username} logged out")
     session.clear()
-    flash("You have been logged out.", "info")
+    flash("Logged out. See you at recess.", "info")
     return redirect(url_for("main.login"))
 
 
@@ -338,16 +276,16 @@ def verify_email(token):
         current_app.config.get("EMAIL_VERIFY_TOKEN_EXP", 86400),
     )
     if error:
-        flash("Verification link is invalid or expired.", "danger")
+        flash("That link expired or doesn't work. Get a new one below.", "danger")
         return redirect(url_for("main.resend_verification"))
 
     if not user.email_verified:
         user.email_verified = True
         user.email_verified_at = utcnow()
         db.session.commit()
-        flash("Email verified! You can now log in.", "success")
+        flash("Email verified. Log in and start writing.", "success")
     else:
-        flash("Email already verified. Please log in.", "info")
+        flash("You're already verified. Log in.", "info")
     return redirect(url_for("main.login"))
 
 
@@ -368,7 +306,7 @@ def resend_verification():
                 "Verify your Ruff account",
                 f"Verify your email: {verify_url}",
             )
-        flash("If the account exists, a verification link has been sent.", "info")
+        flash("If that email has an account, a new link is on its way.", "info")
         return redirect(url_for("main.login"))
     return render_template("resend_verification.html", form=form)
 
@@ -391,7 +329,7 @@ def forgot_password():
                 "Reset your Ruff password",
                 f"Reset your password: {reset_url}",
             )
-        flash("If the account exists, a reset link has been sent.", "info")
+        flash("If that email has an account, a reset link is on its way.", "info")
         return redirect(url_for("main.login"))
     return render_template("forgot_password.html", form=form)
 
@@ -407,7 +345,7 @@ def reset_password(token):
     )
     if error:
         security_log.warning("Invalid or expired password reset link (%s) from %s", error, request.remote_addr)
-        flash("Password reset link is invalid or expired.", "danger")
+        flash("That reset link expired or doesn't work. Ask for a new one.", "danger")
         return redirect(url_for("main.forgot_password"))
 
     form = ResetPasswordForm()
@@ -415,375 +353,171 @@ def reset_password(token):
         user.set_password(form.password.data)
         db.session.commit()
         security_log.info("Password reset completed for user_id=%s from %s", user.id, request.remote_addr)
-        flash("Password reset successfully. Please log in.", "success")
+        flash("Password changed. Log in with the new one.", "success")
         return redirect(url_for("main.login"))
     return render_template("reset_password.html", form=form)
 
 
+# ============================================================================
+# The sheet: write, stash, open
+# ============================================================================
+
+PAGE_SIZE = 30
+MAX_TAGS = 20
+
+
+def wants_json() -> bool:
+    """True for fetch() calls from the sheet (progressive enhancement)."""
+    return request.accept_mimetypes.best == "application/json" or request.is_json
+
+
+def parse_tags(raw) -> list:
+    """Comma-separated (or list) tag input -> clean, unique, lowercase names."""
+    names = raw if isinstance(raw, list) else str(raw or "").split(",")
+    clean = []
+    for name in names:
+        name = str(name).strip().lstrip("#").strip().lower()
+        if name and name not in clean:
+            clean.append(name)
+    return clean
+
+
+def recent_stashes(user_id: int, limit: int = 8):
+    return (Stash.query.filter_by(user_id=user_id)
+            .order_by(Stash.updated_at.desc()).limit(limit).all())
+
+
 @bp.route("/")
-@login_required
 def index():
-    """Render the home page with stash creation form."""
-    form = StashForm()
-    form.collection.choices = [(-1, "-- No Collection --")] + get_collection_choices()
-    return render_template("index.html", form=form)
-
-
-@bp.route("/stash", methods=["POST"])
-@login_required
-def stash():
-    """Handle stash creation."""
-    form = StashForm()
-    form.collection.choices = [(-1, "-- No Collection --")] + get_collection_choices()
-    
-    if form.validate_on_submit():
-        try:
-            title = form.title.data
-            body = form.body.data
-            checklist_items = parse_checklist(form.checklist.data)
-            
-            # Get collection if selected
-            collection_id = None
-            if form.collection.data and form.collection.data != -1:
-                collection_id = form.collection.data
-            
-            new_stash = Stash(
-                title=title,
-                body=body,
-                checklist=checklist_items,
-                user_id=g.user.id,
-                collection_id=collection_id
-            )
-            db.session.add(new_stash)
-            db.session.flush()
-            
-            # Add tags if provided
-            if form.tags.data:
-                tags = [tag.strip().lower() for tag in form.tags.data.split(',') if tag.strip()]
-                for tag_name in tags:
-                    new_stash.add_tag(tag_name)
-            
-            db.session.commit()
-            
-            flash("Stash saved successfully!", "success")
-            logger.info(f"New stash created: {new_stash.id}")
-        except HTTPException:
-            raise
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error creating stash: {str(e)}")
-            flash("Failed to save stash. Please try again.", "error")
-    else:
-        flash("Failed to save stash. Please check your input.", "error")
-    return redirect(url_for("main.index"))
-
-
-@bp.route("/stashes")
-@login_required
-def view_stashes():
-    """Display all stashes with optional filtering."""
-    try:
-        # Get filter parameters
-        collection_id = request.args.get('collection', type=int)
-        tag_name = request.args.get('tag', type=str)
-        search_query = request.args.get('search', type=str)
-        
-        # Build query - filter by current user
-        query = Stash.query.filter_by(user_id=g.user.id)
-        
-        if collection_id:
-            query = query.filter_by(collection_id=collection_id)
-        
-        if tag_name:
-            query = query.join(Stash.tags).filter(Tag.name == tag_name.lower())
-        
-        if search_query:
-            search_pattern = f"%{search_query}%"
-            query = query.filter(
-                or_(
-                    Stash.title.ilike(search_pattern),
-                    Stash.body.ilike(search_pattern),
-                    Stash.preview.ilike(search_pattern)
-                )
-            )
-        
-        stashes = query.order_by(Stash.created_at.desc()).all()
-        
-        # Get all collections and tags for sidebar - filtered by current user
-        collection_dicts = get_user_collections_with_counts(g.user.id)
-        tags = get_user_tags_with_counts(g.user.id)
-        
-        return render_template(
-            "stashes.html",
-            stashes=[s.to_dict() for s in stashes],
-            collections=collection_dicts,
-            tags=tags,
-            current_collection=collection_id,
-            current_tag=tag_name,
-            search_query=search_query
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error loading stashes: {str(e)}")
-        flash("An error occurred while loading stashes.", "error")
-        return redirect(url_for("main.index"))
+    """A fresh sheet. Anyone can write; stashing needs an account."""
+    recent = recent_stashes(g.user.id) if g.user else []
+    return render_template("sheet.html", stash=None, recent=recent)
 
 
 @bp.route("/stashes/<stash_id>")
 @login_required
 def view_stash(stash_id):
-    """Display a specific stash."""
-    try:
-        stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-        return render_template("viewstash.html", stash=stash.to_dict())
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error loading stash {stash_id}: {str(e)}")
-        flash("An error occurred while loading the stash.", "error")
-        return redirect(url_for("main.view_stashes"))
+    """Open a stash in the sheet."""
+    stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+    return render_template("sheet.html", stash=stash, recent=recent_stashes(g.user.id))
 
 
-@bp.route("/stashes/<stash_id>/checklist", methods=["POST"])
+@bp.route("/stash", methods=["POST"])
 @login_required
-def update_checklist(stash_id):
-    """Update checklist items for a stash."""
+def stash():
+    """Stash the sheet: create a new stash, or update `stash_id`."""
+    data = request.get_json(silent=True) if request.is_json else request.form
+    data = data or {}
+    text = str(data.get("text") or "").replace("\r\n", "\n")
+    tags = parse_tags(data.get("tags"))
+    stash_id = (data.get("stash_id") or "").strip()
+
+    error = None
+    if not text.strip():
+        error = "Write something first."
+    elif len(text) > current_app.config["MAX_STASH_LENGTH"]:
+        error = f"That's too long. Keep it under {current_app.config['MAX_STASH_LENGTH']:,} characters."
+    elif len(tags) > MAX_TAGS or any(len(name) > MAX_TAG_LENGTH for name in tags):
+        error = f"Up to {MAX_TAGS} tags, {MAX_TAG_LENGTH} characters each."
+    if error:
+        if wants_json():
+            return {"error": error}, 400
+        flash(error, "error")
+        return redirect(url_for("main.view_stash", stash_id=stash_id) if stash_id else url_for("main.index"))
+
     try:
-        stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-        payload = request.get_json(silent=True) or {}
-        items = payload.get("checklist")
-        if not isinstance(items, list):
-            return {"error": "Invalid checklist"}, 400
-        stash.set_checklist(items)
+        if stash_id:
+            item = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+            item.set_text(text)
+            item.updated_at = utcnow()
+        else:
+            item = Stash(body=text, user_id=g.user.id)
+            db.session.add(item)
+            db.session.flush()
+        item.tags.clear()
+        for name in tags:
+            item.add_tag(name)
         db.session.commit()
-        return {"success": True}, 200
     except HTTPException:
         raise
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error updating checklist {stash_id}: {str(e)}")
-        return {"error": "Failed to update checklist"}, 500
+        logger.error(f"Error stashing: {e}")
+        if wants_json():
+            return {"error": "Couldn't stash that. Try again?"}, 500
+        flash("Couldn't stash that. Try again?", "error")
+        return redirect(url_for("main.index"))
+
+    if wants_json():
+        return {"id": item.id, "title": item.title, "url": url_for("main.view_stash", stash_id=item.id),
+                "tags": sorted(t.name for t in item.tags), "version": item.updated_at.isoformat()}, 200
+    flash("Stashed.", "success")
+    return redirect(url_for("main.view_stash", stash_id=item.id))
 
 
-@bp.route("/stashes/<stash_id>/edit", methods=["GET", "POST"])
+@bp.route("/stashes")
 @login_required
-def edit_stash(stash_id):
-    """Handle stash editing."""
-    try:
-        stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-        
-        form = EditStashForm()
-        form.collection.choices = [(-1, "-- No Collection --")] + get_collection_choices()
-        
-        if form.validate_on_submit():
-            try:
-                stash.title = form.title.data.strip() if form.title.data else None
-                stash.body = form.body.data
-                stash.update_preview()
-                stash.set_checklist(parse_checklist(form.checklist.data))
-                
-                # Update collection
-                if form.collection.data and form.collection.data != -1:
-                    stash.collection_id = form.collection.data
-                else:
-                    stash.collection_id = None
-                
-                # Update tags
-                stash.tags.clear()
-                if form.tags.data:
-                    tags = [tag.strip().lower() for tag in form.tags.data.split(',') if tag.strip()]
-                    for tag_name in tags:
-                        stash.add_tag(tag_name)
-                
-                db.session.commit()
-                flash("Stash updated successfully!", "success")
-                logger.info(f"Stash updated: {stash_id}")
-                return redirect(url_for("main.view_stashes"))
-            except HTTPException:
-                raise
-            except Exception as e:
-                db.session.rollback()
-                logger.error(f"Error updating stash {stash_id}: {str(e)}")
-                flash("Failed to update stash. Please try again.", "error")
-        
-        form.title.data = stash.title or ""
-        form.body.data = stash.body
-        form.collection.data = stash.collection_id or -1
-        form.tags.data = ', '.join([tag.name for tag in stash.tags])
-        form.checklist.data = json.dumps(stash.get_checklist())
-        
-        return render_template("editstash.html", form=form, stash=stash.to_dict())
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in edit_stash {stash_id}: {str(e)}")
-        flash("An error occurred while editing the stash.", "error")
-        return redirect(url_for("main.view_stashes"))
+def view_stashes():
+    """Everything stashed: search, tag chips, newest first, loaded in pages."""
+    tag_name = (request.args.get("tag") or "").strip().lower() or None
+    search_query = (request.args.get("q") or request.args.get("search") or "").strip() or None
+    page = max(request.args.get("page", 1, type=int) or 1, 1)
+
+    query = Stash.query.filter_by(user_id=g.user.id)
+    if tag_name:
+        query = query.join(Stash.tags).filter(Tag.name == tag_name)
+    if search_query:
+        pattern = f"%{search_query}%"
+        query = query.filter(or_(Stash.title.ilike(pattern), Stash.body.ilike(pattern)))
+    rows = (query.order_by(Stash.updated_at.desc())
+            .offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE + 1).all())
+
+    return render_template(
+        "stashes.html",
+        stashes=[s.to_dict() for s in rows[:PAGE_SIZE]],
+        has_more=len(rows) > PAGE_SIZE,
+        page=page,
+        tags=get_user_tags_with_counts(g.user.id),
+        current_tag=tag_name,
+        search_query=search_query,
+    )
 
 
 @bp.route("/stashes/<stash_id>/delete", methods=["POST"])
 @login_required
 def delete_stash(stash_id):
-    """Handle stash deletion."""
+    """Throw a stash away."""
+    stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
     try:
-        stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first()
-        
-        if stash is None:
-            logger.warning(f"Stash not found for deletion: {stash_id}")
-            flash("Stash not found.", "error")
-        else:
-            db.session.delete(stash)
-            db.session.commit()
-            flash("Stash deleted successfully!", "success")
-            logger.info(f"Stash deleted: {stash_id}")
-    except HTTPException:
-        raise
+        db.session.delete(stash)
+        db.session.commit()
+        flash("Tossed it.", "success")
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error deleting stash {stash_id}: {str(e)}")
-        flash("Failed to delete stash. Please try again.", "error")
-    
+        logger.error(f"Error deleting stash {stash_id}: {e}")
+        flash("Couldn't toss that. Try again?", "error")
     return redirect(url_for("main.view_stashes"))
 
 
-# Collection Routes
-@bp.route("/collections")
+# ============================================================================
+# Pass (Recess Relay + Nearby Share) and the Teachers Lounge (settings)
+# ============================================================================
+
+@bp.route("/pass")
+def pass_hub(stash_id=None):
+    """Pass a note: start or join a relay, or share a stash nearby."""
+    stash = None
+    if stash_id and g.user:
+        stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+    recent = recent_stashes(g.user.id, limit=50) if g.user else []
+    return render_template("pass.html", stash=stash.to_dict() if stash else None, recent=recent)
+
+
+@bp.route("/lounge")
 @login_required
-def view_collections():
-    """Display all collections."""
-    try:
-        collections = get_user_collections_with_counts(g.user.id)
-        return render_template("collections.html", collections=collections)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error loading collections: {str(e)}")
-        flash("An error occurred while loading collections.", "error")
-        return redirect(url_for("main.index"))
-
-
-@bp.route("/collections/new", methods=["GET", "POST"])
-@login_required
-def create_collection():
-    """Create a new collection."""
-    form = CollectionForm()
-    if form.validate_on_submit():
-        try:
-            # Check if collection name already exists
-            existing = Collection.query.filter_by(name=form.name.data, user_id=g.user.id).first()
-            if existing:
-                flash("A collection with this name already exists.", "error")
-                return redirect(url_for("main.create_collection"))
-            
-            new_collection = Collection(
-                user_id=g.user.id,
-                name=form.name.data,
-                description=form.description.data or None
-            )
-            db.session.add(new_collection)
-            db.session.commit()
-            
-            flash(f"Collection '{form.name.data}' created successfully!", "success")
-            logger.info(f"New collection created: {new_collection.id}")
-            return redirect(url_for("main.view_collections"))
-        except HTTPException:
-            raise
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error creating collection: {str(e)}")
-            flash("Failed to create collection. Please try again.", "error")
-    
-    return render_template("create_collection.html", form=form)
-
-
-@bp.route("/collections/<int:collection_id>/delete", methods=["POST"])
-@login_required
-def delete_collection(collection_id):
-    """Delete a collection."""
-    try:
-        collection = Collection.query.filter_by(id=collection_id, user_id=g.user.id).first()
-        
-        if collection is None:
-            flash("Collection not found.", "error")
-        else:
-            # Remove stashes from collection (but don't delete stashes)
-            for stash in collection.stashes:
-                stash.collection_id = None
-            
-            db.session.delete(collection)
-            db.session.commit()
-            flash(f"Collection '{collection.name}' deleted successfully!", "success")
-            logger.info(f"Collection deleted: {collection_id}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error deleting collection {collection_id}: {str(e)}")
-        flash("Failed to delete collection. Please try again.", "error")
-    
-    return redirect(url_for("main.view_collections"))
-
-
-# Tag Routes
-@bp.route("/tags")
-@login_required
-def view_tags():
-    """Display all tags."""
-    try:
-        tags = get_user_tags_with_counts(g.user.id)
-        return render_template("tags.html", tags=tags)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error loading tags: {str(e)}")
-        flash("An error occurred while loading tags.", "error")
-        return redirect(url_for("main.index"))
-
-
-@bp.route("/tags/<int:tag_id>/delete", methods=["POST"])
-@login_required
-def delete_tag(tag_id):
-    """Delete a tag."""
-    try:
-        tag = db.session.get(Tag, tag_id)
-        
-        if tag is None:
-            flash("Tag not found.", "error")
-        else:
-            # Only allow tag removal for stashes owned by current user
-            user_stashes = (
-                Stash.query.join(Stash.tags)
-                .filter(Tag.id == tag_id, Stash.user_id == g.user.id)
-                .all()
-            )
-
-            if not user_stashes:
-                flash("Tag not found or access denied.", "error")
-                return redirect(url_for("main.view_tags"))
-
-            for stash in user_stashes:
-                stash.remove_tag(tag)
-
-            # Delete the tag only if it's no longer used by any stash
-            if len(tag.stashes) == 0:
-                tag_name = tag.name
-                db.session.delete(tag)
-                flash(f"Tag '{tag_name}' deleted successfully!", "success")
-                logger.info(f"Tag deleted: {tag_id}")
-            else:
-                flash("Tag removed from your stashes.", "success")
-                logger.info(f"Tag removed from user stashes: {tag_id}")
-
-            db.session.commit()
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error deleting tag {tag_id}: {str(e)}")
-        flash("Failed to delete tag. Please try again.", "error")
-    
-    return redirect(url_for("main.view_tags"))
+def lounge():
+    """Teachers Lounge: theme, backup, account, about."""
+    return render_template("lounge.html", stash_count=Stash.query.filter_by(user_id=g.user.id).count())
 
 
 # ============================================================================
@@ -813,7 +547,7 @@ def export_data():
         raise
     except Exception as e:
         logger.error(f"Error exporting data: {str(e)}")
-        flash("Failed to export data. Please try again.", "error")
+        flash("Couldn't make the backup. Try again?", "error")
         return redirect(url_for("main.index"))
 
 
@@ -842,7 +576,7 @@ def export_stash(stash_id):
         raise
     except Exception as e:
         logger.error(f"Error exporting stash: {str(e)}")
-        flash("Failed to export stash. Please try again.", "error")
+        flash("Couldn't download that. Try again?", "error")
         return redirect(url_for("main.view_stashes"))
 
 
@@ -853,16 +587,15 @@ def export_stash(stash_id):
 @bp.route("/share")
 @login_required
 def share():
-    """Render the nearby share page."""
-    return render_template("share.html", stash=None)
+    """Nearby Share lives on the Pass page."""
+    return redirect(url_for("main.pass_hub"))
 
 
 @bp.route("/share/<stash_id>")
 @login_required
 def share_stash(stash_id):
-    """Render the nearby share page for a specific stash."""
-    stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-    return render_template("share.html", stash=stash.to_dict())
+    """The Pass page with this stash ready to send."""
+    return pass_hub(stash_id=stash_id)
 
 
 @bp.route("/share/payload/<stash_id>")
@@ -876,7 +609,6 @@ def share_payload(stash_id):
         "body": stash.body,
         "checklist": stash.get_checklist(),
         "tags": [tag.name for tag in stash.tags],
-        "collection": stash.collection.name if stash.collection else None,
     }, 200
 
 
@@ -911,7 +643,6 @@ def import_shared_stash():
             body=body,
             checklist=checklist_items,
             user_id=g.user.id,
-            collection_id=None,
         )
         db.session.add(new_stash)
         db.session.flush()
@@ -938,19 +669,19 @@ def import_shared_stash():
 def relay_home():
     """Join or start a Recess Relay."""
     if request.method == "GET":
-        return render_template("relay_home.html")
+        return redirect(url_for("main.pass_hub"))
 
     action = (request.form.get("action") or "").strip()
     if action == "join":
         code = (request.form.get("code") or "").strip().upper()
         if not code:
-            flash("Enter a relay code to join.", "warning")
-            return redirect(url_for("main.relay_home"))
+            flash("Type the relay code to join.", "warning")
+            return redirect(url_for("main.pass_hub"))
         return redirect(url_for("main.relay_view", code=code))
 
     if action == "start":
         if g.user is None:
-            flash("Login required to start a relay.", "warning")
+            flash("Log in to start a relay. Anyone can join one.", "warning")
             return redirect(url_for("main.login"))
 
         title = (request.form.get("title") or "").strip() or "Recess Relay"
@@ -976,10 +707,10 @@ def relay_home():
         )
         db.session.add(relay)
         db.session.commit()
-        flash(f"Relay started. Share code {relay.code}.", "success")
+        flash(f"Relay started. Give friends the code {relay.code}.", "success")
         return redirect(url_for("main.relay_view", code=relay.code))
 
-    flash("Invalid relay action.", "error")
+    flash("That didn't work. Try again?", "error")
     return redirect(url_for("main.relay_home"))
 
 
@@ -1005,7 +736,7 @@ def relay_start_from_stash(stash_id):
     )
     db.session.add(relay)
     db.session.commit()
-    flash(f"Relay started. Share code {relay.code}.", "success")
+    flash(f"Relay started. Give friends the code {relay.code}.", "success")
     return redirect(url_for("main.relay_view", code=relay.code))
 
 
@@ -1037,15 +768,15 @@ def relay_add(code):
 
     body = (request.form.get("body") or "").strip()
     if not body:
-        flash("Add a line before submitting.", "warning")
+        flash("Write your line first.", "warning")
         return redirect(url_for("main.relay_view", code=relay.code))
     if len(body) > 240:
-        flash("Keep it short — max 240 characters per line.", "warning")
+        flash("Keep it to one line (240 characters).", "warning")
         return redirect(url_for("main.relay_view", code=relay.code))
 
     entry_count = db.session.query(func.max(RelayEntry.position)).filter_by(session_id=relay.id).scalar() or 0
     if entry_count >= relay.max_entries:
-        flash("This relay already hit its limit.", "warning")
+        flash("The note's full.", "warning")
         return redirect(url_for("main.relay_view", code=relay.code))
 
     author = g.user.username if g.user else (request.form.get("author_name") or "Guest").strip()
@@ -1069,169 +800,67 @@ def relay_close(code):
     """Close a relay session."""
     relay = get_active_relay_or_404(code)
     if relay.owner_id != g.user.id:
-        flash("Only the relay owner can close it.", "error")
+        flash("Only whoever started the relay can close it.", "error")
         return redirect(url_for("main.relay_view", code=relay.code))
 
     relay.is_closed = True
     relay.closed_at = utcnow()
     db.session.commit()
-    flash("Relay closed.", "success")
+    flash("Relay closed. That's the end of the story.", "success")
     return redirect(url_for("main.relay_view", code=relay.code))
 
 
 @bp.route("/import", methods=["GET", "POST"])
 @login_required
 def import_data():
-    """Import stashes, collections, and tags from JSON."""
+    """Restore stashes and tags from a backup file."""
     if request.method == "GET":
-        return render_template("import.html")
+        return redirect(url_for("main.lounge", _anchor="backup"))
     
     try:
         # Check if file was uploaded
         if 'file' not in request.files:
-            flash("No file selected. Please choose a file to import.", "warning")
-            return redirect(url_for("main.import_data"))
+            flash("Pick a backup file first.", "warning")
+            return redirect(url_for("main.lounge", _anchor="backup"))
         
         file = request.files['file']
         
         if file.filename == '':
-            flash("No file selected. Please choose a file to import.", "warning")
-            return redirect(url_for("main.import_data"))
+            flash("Pick a backup file first.", "warning")
+            return redirect(url_for("main.lounge", _anchor="backup"))
         
         if not file.filename.endswith('.json'):
-            flash("Invalid file type. Please upload a JSON file.", "error")
-            return redirect(url_for("main.import_data"))
+            flash("That isn't a backup file (it should end in .json).", "error")
+            return redirect(url_for("main.lounge", _anchor="backup"))
         
         # Read file content
         try:
             json_content = file.read().decode('utf-8')
         except UnicodeDecodeError:
-            flash("File encoding error. Please make sure the file is UTF-8 encoded.", "error")
-            return redirect(url_for("main.import_data"))
+            flash("That file couldn't be read. Is it a backup from here?", "error")
+            return redirect(url_for("main.lounge", _anchor="backup"))
         
         # Import data
         result = import_from_json(g.user, json_content)
         
         if not result['success']:
-            flash(f"Import failed: {result['error']}", "error")
-            return redirect(url_for("main.import_data"))
+            flash(f"Couldn't restore that: {result['error']}", "error")
+            return redirect(url_for("main.lounge", _anchor="backup"))
         
         # Show success message with statistics
-        message = (
-            f"✓ Import successful! "
-            f"Created: {result['created']['collections']} collections, "
-            f"{result['created']['stashes']} stashes, "
-            f"{result['created']['tags']} tags. "
-        )
-        
+        created = result['created']['stashes']
+        message = f"Restored {created} stash{'' if created == 1 else 'es'}."
         if result['skipped']['stashes'] > 0:
-            message += f"(Skipped {result['skipped']['stashes']} existing stashes) "
+            message += f" {result['skipped']['stashes']} were already here."
         if result['skipped']['too_large'] > 0:
-            message += f"(Skipped {result['skipped']['too_large']} stashes over the size limit)"
+            message += f" {result['skipped']['too_large']} were too long to keep."
         
         logger.info(f"Data imported for user {g.user.username}: {result}")
         flash(message, "success")
         return redirect(url_for("main.view_stashes"))
-
     except HTTPException:
-
         raise
-
     except Exception as e:
         logger.error(f"Error importing data: {str(e)}")
-        flash("Import failed. Please check the file and try again.", "error")
-        return redirect(url_for("main.import_data"))
-
-
-@bp.route("/stash/bulk/delete", methods=["POST"])
-@login_required
-def bulk_delete():
-    """Delete multiple stashes at once."""
-    try:
-        data = request.get_json(silent=True) or {}
-        stash_ids = data.get('stash_ids', [])
-        
-        if not stash_ids:
-            return {"error": "No stashes selected"}, 400
-        
-        # Validate that all stashes belong to the current user
-        stashes_to_delete = Stash.query.filter(
-            Stash.id.in_(stash_ids),
-            Stash.user_id == g.user.id
-        ).all()
-        
-        deleted_count = len(stashes_to_delete)
-        
-        if deleted_count != len(stash_ids):
-            # Some stashes don't belong to this user or don't exist
-            logger.warning(f"User {g.user.id} attempted to delete {len(stash_ids)} stashes but only {deleted_count} belong to them")
-        
-        # Delete all validated stashes
-        for stash in stashes_to_delete:
-            db.session.delete(stash)
-        
-        db.session.commit()
-        logger.info(f"User {g.user.username} deleted {deleted_count} stashes via bulk action")
-        
-        return {"success": True, "deleted": deleted_count}, 200
-    
-    except HTTPException:
-    
-        raise
-    
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error in bulk delete: {str(e)}")
-        return {"error": "Failed to delete stashes"}, 500
-
-
-@bp.route("/stash/bulk/move", methods=["POST"])
-@login_required
-def bulk_move():
-    """Move multiple stashes to a collection."""
-    try:
-        data = request.get_json(silent=True) or {}
-        stash_ids = data.get('stash_ids', [])
-        collection_id = data.get('collection_id')
-        
-        if not stash_ids:
-            return {"error": "No stashes selected"}, 400
-        
-        # Validate that all stashes belong to the current user
-        stashes_to_move = Stash.query.filter(
-            Stash.id.in_(stash_ids),
-            Stash.user_id == g.user.id
-        ).all()
-        
-        moved_count = len(stashes_to_move)
-        
-        if moved_count != len(stash_ids):
-            logger.warning(f"User {g.user.id} attempted to move {len(stash_ids)} stashes but only {moved_count} belong to them")
-        
-        # If collection_id is provided, validate it belongs to the user
-        if collection_id:
-            collection = Collection.query.filter_by(
-                id=collection_id,
-                user_id=g.user.id
-            ).first()
-            
-            if not collection:
-                return {"error": "Collection not found or you don't have permission to use it"}, 403
-        
-        # Move all validated stashes
-        for stash in stashes_to_move:
-            stash.collection_id = collection_id
-        
-        db.session.commit()
-        logger.info(f"User {g.user.username} moved {moved_count} stashes via bulk action")
-        
-        return {"success": True, "moved": moved_count}, 200
-    
-    except HTTPException:
-    
-        raise
-    
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error in bulk move: {str(e)}")
-        return {"error": "Failed to move stashes"}, 500
+        flash("Couldn't restore that file. Try again?", "error")
+        return redirect(url_for("main.lounge", _anchor="backup"))

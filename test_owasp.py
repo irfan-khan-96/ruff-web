@@ -64,25 +64,25 @@ def bob_stash(app):
 
 @pytest.mark.parametrize("method, path", [
     ("get", "/stashes/{id}"),
-    ("get", "/stashes/{id}/edit"),
     ("get", "/export/stash/{id}"),
     ("get", "/share/{id}"),
     ("get", "/share/payload/{id}"),
-    ("post", "/stashes/{id}/checklist"),
+    ("post", "/stashes/{id}/delete"),
     ("post", "/relay/start/{id}"),
 ])
 def test_other_users_stash_is_not_found(app, alice, bob_stash, method, path):
     client = logged_in_client(app, "alice")
-    response = getattr(client, method)(path.format(id=bob_stash.id), json={"checklist": []})
+    response = getattr(client, method)(path.format(id=bob_stash.id))
     assert response.status_code == 404
     assert db.session.get(Stash, bob_stash.id).body == "bob's secret"
 
 
-def test_bulk_actions_ignore_other_users_stashes(app, alice, bob_stash):
+def test_cannot_overwrite_other_users_stash(app, alice, bob_stash):
     client = logged_in_client(app, "alice")
-    assert client.post("/stash/bulk/delete", json={"stash_ids": [bob_stash.id]}).get_json()["deleted"] == 0
-    assert client.post("/stash/bulk/move", json={"stash_ids": [bob_stash.id]}).get_json()["moved"] == 0
-    assert db.session.get(Stash, bob_stash.id) is not None
+    response = client.post("/stash", json={"text": "mine now", "stash_id": bob_stash.id},
+                           headers={"Accept": "application/json"})
+    assert response.status_code == 404
+    assert db.session.get(Stash, bob_stash.id).body == "bob's secret"
 
 
 def test_share_room_holds_only_sender_and_receiver(app, alice):
@@ -148,7 +148,8 @@ def test_production_requires_long_secrets(monkeypatch):
 # A05 Injection -----------------------------------------------------------------
 
 def test_export_filename_is_sanitised(app, alice):
-    stash = Stash(title='Plans\r\nX-Injected: 1 "../../etc"', body="body", user_id=alice.id)
+    # The download name comes from the first line (the title)
+    stash = Stash(body='Plans: X-Injected: 1 "../../etc"\r\nbody', user_id=alice.id)
     db.session.add(stash)
     db.session.commit()
     response = logged_in_client(app, "alice").get(f"/export/stash/{stash.id}")
@@ -193,7 +194,7 @@ def test_signup_does_not_reveal_registered_emails(app, alice, monkeypatch):
         "password": PASSWORD, "confirm_password": PASSWORD,
     }, follow_redirects=True)
     # Same answer as a successful sign-up; no second account; the owner is told
-    assert b"Account created! Check your email" in response.data
+    assert b"Almost there. Check your email" in response.data
     assert User.query.filter_by(username="copycat").first() is None
     assert sent == [("alice@example.com", "Someone tried to sign up with your email")]
 
@@ -272,6 +273,7 @@ def test_sentry_only_starts_with_a_dsn(monkeypatch):
 
 def test_not_found_is_not_swallowed_by_error_handling(app, alice):
     client = logged_in_client(app, "alice")
-    for path in ["/stashes/does-not-exist", "/stashes/does-not-exist/edit", "/export/stash/does-not-exist"]:
+    for path in ["/stashes/does-not-exist", "/export/stash/does-not-exist"]:
         assert client.get(path).status_code == 404, path
-    assert client.post("/stashes/does-not-exist/checklist", json={"checklist": []}).status_code == 404
+    assert client.post("/stash", json={"text": "x", "stash_id": "does-not-exist"},
+                       headers={"Accept": "application/json"}).status_code == 404

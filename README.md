@@ -1,16 +1,16 @@
 # Ruff
 
-Ruff is a Flask app for stashing notes with titles, body text, and a task note.
+A pocket notebook: jot things down, stash them, and pass notes like it's recess.
 
 ## Features
-- Titles + body stashes with previews
-- Task notes (checklists) attached to stashes
-- Tags and collections
-- Import/export (JSON + text)
-- Nearby Share (WebRTC + Socket.IO)
-- Email verification and password reset
-- Light/dark themes and PWA support
-- CSRF protection, rate limiting, health checks
+- **Write:** one autosaved sheet. The first line is the title; `[ ]` lines are to-dos, shown as the Recess Roster. Lists continue on Enter. Anyone can write; drafts stay on the device until you stash them.
+- **Stash:** one tap (or `Ctrl/⌘+S`) to keep a sheet; search and tag chips to find it again.
+- **Pass:** Recess Relay (a story written one line each) and Nearby Share (send a stash device to device over WebRTC).
+- **Teachers Lounge:** notebook / chalkboard / device theme, backup and restore, account.
+- Fast and phone-first: self-hosted fonts, no third-party requests, compressed and long-cached assets, bottom tab bar on phones, two-pane layout on tablets.
+- Email verification, password reset, CSRF protection, rate limiting, health checks (see [SECURITY.md](SECURITY.md)).
+
+The product name lives in one setting (`APP_NAME`).
 
 ## Quickstart
 1. Create and activate a virtual environment:
@@ -51,8 +51,9 @@ python -m playwright install chromium
 python -m pytest
 ```
 The `test_e2e_*.py` files drive the real app in Chromium (shared fixtures in `conftest.py`):
-- `test_e2e_flows.py`: sign-up with email verification, password reset, logout, stash create/search/edit/delete with task notes, collections and bulk actions, export/import, Recess Relay with a guest
+- `test_e2e_flows.py`: sign-up with email verification, password reset, logout, writing before sign-up, the sheet (lists, Recess Roster, stash shortcut, autosave), search and tags, tossing, backup and restore, Recess Relay with a guest
 - `test_e2e_share.py`: a real Nearby Share transfer between two tabs
+- `test_e2e_visual.py`: contrast on gradient controls, and layout on phones, tablets and desktop (no sideways scrolling, 44px tap targets)
 - `test_e2e_a11y.py`: an axe-core accessibility audit of every page in light and dark themes
 
 They need network access (Socket.IO client and axe-core load from CDNs) and are skipped if Playwright isn't installed. GitHub Actions runs everything on each push.

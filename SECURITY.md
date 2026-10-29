@@ -9,7 +9,7 @@ Please report vulnerabilities privately through GitHub's **Security → Report a
 Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2025](https://owasp.org/Top10/) categories, not a third-party audit or certification. Most controls below are backed by automated tests (`test_owasp.py` is organised by category; see also `test_security.py` and the `test_e2e_*.py` browser tests); configuration-level items (CI pinning, Dependabot, Docker user) were verified by hand.
 
 ### A01 Broken Access Control
-- Every stash, collection, tag, export, share and bulk action is filtered by the logged-in user; another user's stash returns 404 (tested for every route).
+- Every stash, tag, export and share action is filtered by the logged-in user; another user's stash returns 404, and saving over it is refused (tested for every route).
 - Relay sessions can only be closed by their owner.
 - Nearby Share (Socket.IO): logged-in users only, same-origin only, a share room holds at most two peers, only room members can send signalling messages, and join attempts are throttled (10/minute per connection) to stop share-code guessing.
 - CSRF tokens on every form and JSON request; logout is a CSRF-protected POST.
@@ -26,7 +26,7 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - All direct dependencies are pinned; CI runs `pip-audit` on direct and transitive dependencies and fails on known vulnerabilities.
 - Dependabot opens weekly update PRs for Python packages, GitHub Actions and the Docker base image.
 - GitHub Actions are pinned to full commit SHAs.
-- The only third-party script in the app (Socket.IO client) loads from cdnjs with Subresource Integrity.
+- The only third-party resource is the Socket.IO client on the Pass page, loaded from cdnjs with Subresource Integrity. Fonts are self-hosted.
 
 ### A04 Cryptographic Failures
 - Passwords are hashed with scrypt (Werkzeug).
@@ -74,7 +74,6 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 | Username enumeration at sign-up | Accepted: "username already exists" is shown, as usernames are already visible in Recess Relay. |
 | Multi-factor authentication | Not implemented. |
 | `style-src 'unsafe-inline'` in the CSP | Accepted: templates use inline styles; scripts remain strictly nonce-based. |
-| Google Fonts stylesheet | Loaded without SRI (its CSS varies by browser); self-host the fonts to remove the dependency. |
 | Rate-limit and share-join counters | Kept per process; with more than one process or host, set `RATELIMIT_STORAGE_URL=redis://...` (share-join throttling stays per process). |
 | Backups | SQLite on the Docker volume is not backed up automatically; back up `/app/data` or use Postgres. |
 | Account self-service | Changing email or deleting an account isn't available yet. |

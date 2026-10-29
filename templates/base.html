@@ -2,81 +2,90 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Ruff App{% endblock %}</title>
-    <meta name="theme-color" content="#FFB02E">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+    <meta name="description" content="A pocket notebook: jot things down, stash them, and pass notes like it's recess.">
+    <meta name="theme-color" content="#fffdf6" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1b2723" media="(prefers-color-scheme: dark)">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/mascot.svg') }}">
-    <link rel="shortcut icon" href="{{ url_for('static', filename='images/mascot.svg') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/mascot.svg') }}">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <script nonce="{{ csp_nonce() }}">
+        // Apply the theme before first paint (no flash of the wrong theme)
+        (function () {
+            var theme;
+            try { theme = localStorage.getItem("theme"); } catch (e) {}
+            if (theme !== "light" && theme !== "dark") {
+                theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            }
+            document.documentElement.dataset.theme = theme;
+        })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Permanent+Marker&family=Rubik:wght@300;400;500;700&display=swap" rel="stylesheet">
 </head>
-<body class="recess-theme">
-    <!-- Navbar -->
-    <nav class="navbar">
-        <div class="navbar-container">
-                        <div class="navbar-left">
-                                <a href="{{ url_for('main.index') }}" class="navbar-brand">Ruff</a>
-                        </div>
-            <button id="nav-toggle" class="nav-toggle" aria-label="Toggle navigation">☰</button>
-            <ul class="navbar-menu">
-                {% if g.user %}
-                    <li><a href="{{ url_for('main.index') }}" class="nav-link">Home</a></li>
-                    <li><a href="{{ url_for('main.view_stashes') }}" class="nav-link">Stashes</a></li>
-                    <li><a href="{{ url_for('main.view_collections') }}" class="nav-link">Collections</a></li>
-                    <li><a href="{{ url_for('main.view_tags') }}" class="nav-link">Tags</a></li>
-                    <li class="nav-dropdown">
-                        <a href="#" class="nav-link dropdown-toggle">🪑 Teachers Lounge</a>
-                        <ul class="dropdown-menu">
-                            <li><a href="{{ url_for('main.relay_home') }}" class="dropdown-link">📝 Recess Relay</a></li>
-                            <li><a href="{{ url_for('main.share') }}" class="dropdown-link">📡 Nearby Share</a></li>
-                            <li><a href="{{ url_for('main.export_data') }}" class="dropdown-link">⬇️ Export All</a></li>
-                            <li><a href="{{ url_for('main.import_data') }}" class="dropdown-link">⬆️ Import</a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-user">
-                        <span class="nav-username">{{ g.user.username }}</span>
-                        <form method="POST" action="{{ url_for('main.logout') }}" class="logout-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="nav-link logout-link">Logout</button>
-                        </form>
-                    </li>
-                {% else %}
-                    <li><a href="{{ url_for('main.relay_home') }}" class="nav-link">Recess Relay</a></li>
-                    <li><a href="{{ url_for('main.login') }}" class="nav-link">Login</a></li>
-                    <li><a href="{{ url_for('main.signup') }}" class="nav-link">Sign Up</a></li>
-                {% endif %}
-            </ul>
-            <button id="theme-toggle" class="theme-toggle">🌙</button>
+{% set section = {
+    'main.index': 'write', 'main.view_stash': 'write',
+    'main.view_stashes': 'stash',
+    'main.pass_hub': 'pass', 'main.share_stash': 'pass', 'main.relay_view': 'pass',
+    'main.lounge': 'lounge',
+    'main.login': 'login', 'main.signup': 'login',
+}.get(request.endpoint) %}
+{% macro nav_items() %}
+    <a class="nav-link" href="{{ url_for('main.index') }}" {% if section == 'write' %}aria-current="page"{% endif %}>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>
+        <span>Write</span>
+    </a>
+    {% if g.user %}
+    <a class="nav-link" href="{{ url_for('main.view_stashes') }}" {% if section == 'stash' %}aria-current="page"{% endif %}>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8z"/><path d="M3 4h18v4H3z"/><path d="M10 12h4"/></svg>
+        <span>Stash</span>
+    </a>
+    {% endif %}
+    <a class="nav-link" href="{{ url_for('main.pass_hub') }}" {% if section == 'pass' %}aria-current="page"{% endif %}>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4"/><path d="M8 12h8M8 16h5"/></svg>
+        <span>Pass</span>
+    </a>
+    {% if g.user %}
+    <a class="nav-link" href="{{ url_for('main.lounge') }}" {% if section == 'lounge' %}aria-current="page"{% endif %}>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h10v5a4 4 0 0 1-4 4h-2a4 4 0 0 1-4-4v-5z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M9 3v3M13 3v3"/></svg>
+        <span>Lounge</span>
+    </a>
+    {% else %}
+    <a class="nav-link" href="{{ url_for('main.login') }}" {% if section == 'login' %}aria-current="page"{% endif %}>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        <span>Log in</span>
+    </a>
+    {% endif %}
+{% endmacro %}
+<body>
+    <a class="sr-only" href="#main-content">Skip to content</a>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a href="{{ url_for('main.index') }}" class="brand">{{ app_name }}</a>
+            <nav class="nav" aria-label="Main">{{ nav_items() }}</nav>
+            <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch between notebook and chalkboard">🌓</button>
         </div>
-    </nav>
+    </header>
 
-    <main id="main-content">
-    <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            <div class="flash-messages">
-                {% for category, message in messages %}
-                    <div class="flash-message {{ category }}">
-                        {{ message }}
-                    </div>
-                {% endfor %}
-            </div>
-        {% endif %}
+    {% if messages %}
+    <div class="toasts" role="status" aria-live="polite">
+        {% for category, message in messages %}
+        <div class="toast {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
     {% endwith %}
 
-    <!-- Main Content -->
-    <div class="container">
+    <main id="main-content" class="page {% block page_class %}{% endblock %}">
         {% block content %}{% endblock %}
-    </div>
     </main>
 
-    <footer class="footer-doodle">
-        <div class="footer-line">✏️ Ruff · Third Street scribbles · Keep stashing</div>
-    </footer>
+    <footer class="site-footer">{{ app_name }} · keep stashing</footer>
 
-    <!-- JavaScript for Theme Toggle -->
+    <nav class="tabbar" aria-label="Main" style="--tabs: {{ 4 if g.user else 3 }}">{{ nav_items() }}</nav>
+
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

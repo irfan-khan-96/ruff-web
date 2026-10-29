@@ -7,6 +7,9 @@
     const receiveCodeInput = document.getElementById("receive-code");
 
     const config = window.RUFF_SHARE || {};
+    // The stash to send comes from the picker on the Pass page
+    const picker = document.getElementById("share-stash");
+    const syncPicker = () => { config.payloadUrl = picker ? picker.value : config.payloadUrl; payloadCache = null; };
     const socket = typeof io === "function" ? io() : null;
 
     let roomCode = null;
@@ -14,6 +17,8 @@
     let dataChannel = null;
     let isSender = false;
     let payloadCache = null;
+    syncPicker();
+    picker?.addEventListener("change", syncPicker);
 
     function setShareStatus(text) {
         if (shareStatus) shareStatus.textContent = text;
@@ -177,7 +182,7 @@
     startBtn?.addEventListener("click", async () => {
         try {
             if (!config.payloadUrl) {
-                setShareStatus("Open a stash first, then choose Nearby Share.");
+                setShareStatus("Pick a stash to send first.");
                 return;
             }
             isSender = true;

@@ -187,7 +187,7 @@ def test_import_skips_oversized_stashes(client, user):
         content_type="multipart/form-data",
         follow_redirects=True,
     )
-    assert "Skipped 1 stashes over the size limit" in response.get_data(as_text=True)
+    assert "1 were too long to keep." in response.get_data(as_text=True)
     assert [s.id for s in user.stashes] == ["fine"]
 
 
@@ -204,12 +204,12 @@ def test_security_headers_present(app):
 
 
 def test_inline_scripts_carry_the_request_nonce(client):
-    response = client.get("/share")
+    response = client.get("/pass")
     nonce = response.headers["Content-Security-Policy"].split("'nonce-")[1].split("'")[0]
     html = response.get_data(as_text=True)
     assert f'<script nonce="{nonce}">' in html
     # A fresh nonce on every request
-    assert nonce not in client.get("/share").headers["Content-Security-Policy"]
+    assert nonce not in client.get("/pass").headers["Content-Security-Policy"]
 
 
 def test_templates_have_no_inline_event_handlers():

@@ -1,0 +1,15 @@
+{# Shared form field: label, input, hint and errors, with aria wiring #}
+{% macro field(f, hint=None, autocomplete=None, type=None) %}
+<div class="field">
+    {{ f.label }}
+    {% set attrs = {} %}
+    {% if f.errors %}{% set _ = attrs.update({"aria-invalid": "true", "aria-describedby": f.id ~ "-errors"}) %}{% endif %}
+    {% if autocomplete %}{% set _ = attrs.update({"autocomplete": autocomplete}) %}{% endif %}
+    {% if type %}{% set _ = attrs.update({"type": type}) %}{% endif %}
+    {{ f(**attrs) }}
+    {% if hint %}<span class="hint">{{ hint }}</span>{% endif %}
+    {% if f.errors %}
+    <p class="field-errors" id="{{ f.id }}-errors">{{ f.errors | join(" ") }}</p>
+    {% endif %}
+</div>
+{% endmacro %}

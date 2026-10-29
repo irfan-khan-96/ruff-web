@@ -17,6 +17,9 @@ INSECURE_DEFAULTS = {DEV_SECRET_KEY, DEV_PASSWORD_SALT}
 class Config:
     """Base configuration class."""
 
+    # Product name shown in the UI (one place to change for a rename)
+    APP_NAME = os.getenv("APP_NAME", "Ruff")
+
     # Flask Settings
     SECRET_KEY = os.getenv("SECRET_KEY", DEV_SECRET_KEY)
     SECURITY_PASSWORD_SALT = os.getenv("SECURITY_PASSWORD_SALT", DEV_PASSWORD_SALT)

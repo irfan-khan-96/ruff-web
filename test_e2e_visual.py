@@ -1,6 +1,6 @@
 """
 Visual regression checks that axe-core can't do: text contrast on gradient
-backgrounds (axe skips those), and the stash card layout.
+backgrounds (axe skips those), and layout on phones, tablets and desktops.
 
 Runs in Chromium in light and dark themes. Skipped when Playwright isn't
 installed.
@@ -13,7 +13,7 @@ import pytest
 from conftest import login
 
 # Buttons, chips and action links: the elements most likely to sit on gradients
-CONTROLS = "button, .btn, .action-button, input[type=submit], .tag-small, .tag-button, .filter-link, .hero-pill"
+CONTROLS = "button, .btn, .chip, .nav-link, .option, input[type=submit], .toast, .roster"
 
 CONTRAST_JS = """selector => [...document.querySelectorAll(selector)]
   .map(el => [el, (el.tagName === 'INPUT' ? el.value : el.textContent).trim()])
@@ -69,30 +69,28 @@ def _low_contrast(page, selector=CONTROLS):
 
 @pytest.fixture(scope="module")
 def seeded(live_server):
-    from models import db, Collection, Stash, User
+    from models import db, Stash, User
 
     username = live_server.create_user("visual")
 
     def seed():
         user = User.query.filter_by(username=username).first()
-        collection = Collection(user_id=user.id, name="School")
-        db.session.add(collection)
-        db.session.flush()
         for n in range(3):
-            stash = Stash(title=f"Stash {n}", body="Bring lunch and a jacket", user_id=user.id,
-                          collection_id=collection.id, checklist=[{"text": "lunch", "done": n == 0}])
+            stash = Stash(body=f"Stash {n} with a fairly long title that has to fit on a phone\n"
+                               f"Bring lunch and a jacket\n[{'x' if n == 0 else ' '}] lunch",
+                          user_id=user.id)
             db.session.add(stash)
             db.session.flush()
             stash.add_tag("trips")
             stash.add_tag(f"tag{n}")
         db.session.commit()
+        return Stash.query.filter_by(user_id=user.id).first().id
 
-    live_server.query(seed)
-    return username
+    return {"username": username, "stash_id": live_server.query(seed)}
 
 
-def _themed_page(new_page, theme):
-    page = new_page(color_scheme=theme)
+def _themed_page(new_page, theme, **options):
+    page = new_page(color_scheme=theme, **options)
     page.add_init_script(f"try {{ localStorage.setItem('theme', '{theme}'); }} catch (e) {{}}")
     return page
 
@@ -104,39 +102,66 @@ def _settle(page):
     page.wait_for_timeout(50)
 
 
+def _private_pages(seeded):
+    return ["/", f"/stashes/{seeded['stash_id']}", "/stashes", "/pass", "/lounge"]
+
+
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_controls_have_readable_text(live_server, new_page, seeded, theme):
     page = _themed_page(new_page, theme)
     failures = {}
-    for path in ["/login", "/signup", "/password/forgot", "/verify/resend", "/relay"]:
+    for path in ["/", "/login", "/signup", "/password/forgot", "/verify/resend", "/pass"]:
         page.goto(live_server.url + path)
         _settle(page)
         failures[f"anon {path}"] = _low_contrast(page)
-    login(page, live_server, seeded)
-    for path in ["/", "/stashes", "/collections", "/tags", "/import", "/share"]:
+    login(page, live_server, seeded["username"])
+    for path in _private_pages(seeded):
         page.goto(live_server.url + path)
         _settle(page)
         failures[f"user {path}"] = _low_contrast(page)
     assert {where: issues for where, issues in failures.items() if issues} == {}
 
 
-def test_stash_cards_layout(live_server, new_page, seeded):
-    page = new_page(viewport={"width": 1280, "height": 900})
-    login(page, live_server, seeded)
-    page.goto(live_server.url + "/stashes")
-    _settle(page)
-    boxes = page.evaluate("""() => [...document.querySelectorAll('.stash-card')].map(card => {
-        const box = el => el.getBoundingClientRect();
-        return {
-          card: {top: box(card).top, bottom: box(card).bottom},
-          checkboxRight: box(card.querySelector('.stash-checkbox')).right,
-          infoLeft: box(card.querySelector('.stash-info')).left,
-        };
-    })""")
-    assert len(boxes) == 3
-    for card in boxes:
-        # Title/content starts right after the checkbox, not floating mid-card
-        assert card["infoLeft"] - card["checkboxRight"] < 40, card
-    for upper, lower in zip(boxes, boxes[1:]):
-        # Tilted cards (and their tape) don't overlap the next one
-        assert upper["card"]["bottom"] < lower["card"]["top"], (upper, lower)
+LAYOUT_JS = """() => {
+    const visible = el => el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden';
+    const tabbar = document.querySelector('.tabbar');
+    return {
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+        tabbar: tabbar && getComputedStyle(tabbar).display !== 'none',
+        small: [...document.querySelectorAll('main button, main .btn, main input:not([type=hidden]):not([type=checkbox]):not([type=radio]), main select, main textarea, .tabbar .nav-link')]
+            .filter(visible)
+            .filter(el => el.getBoundingClientRect().height < 44)
+            .map(el => (el.id || el.className || el.tagName) + ' ' + Math.round(el.getBoundingClientRect().height) + 'px'),
+        cards: [...document.querySelectorAll('.stash-card')].map(c => [c.getBoundingClientRect().top, c.getBoundingClientRect().bottom]),
+    };
+}"""
+
+
+@pytest.mark.parametrize("width, height, is_phone", [
+    (360, 740, True),     # small phone
+    (390, 844, True),     # phone
+    (768, 1024, False),   # tablet, portrait
+    (1024, 768, False),   # tablet, landscape
+    (1280, 800, False),   # desktop
+])
+def test_layout_fits_every_screen(live_server, new_page, seeded, width, height, is_phone):
+    page = new_page(viewport={"width": width, "height": height}, is_mobile=is_phone, has_touch=is_phone)
+    login(page, live_server, seeded["username"])
+    problems = {}
+    for path in _private_pages(seeded):
+        page.goto(live_server.url + path)
+        _settle(page)
+        found = page.evaluate(LAYOUT_JS)
+        issues = []
+        if found["overflow"] > 0:
+            issues.append(f"scrolls sideways by {found['overflow']}px")
+        if found["tabbar"] != is_phone:
+            issues.append("tab bar " + ("missing on a phone" if is_phone else "showing on a big screen"))
+        if is_phone and found["small"]:
+            issues.append(f"tap targets under 44px: {found['small']}")
+        for (_, bottom), (top, _) in zip(found["cards"], found["cards"][1:]):
+            if bottom > top:
+                issues.append("stash cards overlap")
+        if issues:
+            problems[path] = issues
+    assert problems == {}

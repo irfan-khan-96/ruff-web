@@ -16,15 +16,13 @@ AXE_URL = "https://cdn.jsdelivr.net/npm/axe-core@4.14.0/axe.min.js"
 @pytest.fixture(scope="module")
 def seeded(live_server):
     """A user with one of everything, so every page has real content."""
-    from models import db, User, Stash, Collection, RelaySession, RelayEntry
+    from models import db, User, Stash, RelaySession, RelayEntry
 
     username = live_server.create_user("a11y")
 
     def seed():
         user = User.query.filter_by(username=username).first()
-        db.session.add(Collection(user_id=user.id, name="Work", description="Stuff"))
-        stash = Stash(title="Groceries", body="Milk and eggs", user_id=user.id,
-                      checklist=[{"text": "milk", "done": False}, {"text": "eggs", "done": True}])
+        stash = Stash(body="Groceries\nMilk and eggs\n[ ] milk\n[x] eggs", user_id=user.id)
         db.session.add(stash)
         db.session.flush()
         stash.add_tag("home")
@@ -52,9 +50,10 @@ def _violations(page, url):
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_pages_have_no_accessibility_violations(live_server, new_page, seeded, theme):
     stash_id = seeded["stash_id"]
-    public = ["/login", "/signup", "/password/forgot", "/verify/resend", "/relay", "/relay/A11Y01", "/no-such-page"]
-    private = ["/", "/stashes", f"/stashes/{stash_id}", f"/stashes/{stash_id}/edit", "/collections",
-               "/collections/new", "/tags", "/import", "/share", f"/share/{stash_id}", "/relay/A11Y01"]
+    public = ["/", "/login", "/signup", "/password/forgot", "/verify/resend", "/pass", "/relay/A11Y01",
+              "/no-such-page"]
+    private = ["/", "/stashes", "/stashes?q=nothing-matches", f"/stashes/{stash_id}", "/pass",
+               f"/share/{stash_id}", "/lounge", "/relay/A11Y01"]
 
     # bypass_csp lets the audit inject axe; the app's own CSP is tested elsewhere
     page = new_page(bypass_csp=True, color_scheme=theme)

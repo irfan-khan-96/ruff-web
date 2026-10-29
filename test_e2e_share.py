@@ -47,4 +47,5 @@ def test_nearby_share_sends_and_imports_a_stash(live_server, new_page):
     bodies = live_server.query(
         lambda: [s.body for s in Stash.query.filter_by(user_id=user_id).all()]
     )
-    assert bodies == ["Hello from the other tab", "Hello from the other tab"]
+    # The copy is the same sheet (title line included once, not duplicated)
+    assert bodies == ["Sent over WebRTC\n\nHello from the other tab"] * 2

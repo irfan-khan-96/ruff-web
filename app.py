@@ -4,6 +4,8 @@ Ruff - A Flask-based text stashing application.
 A simple and elegant way to save, organize, and manage text snippets.
 """
 
+import functools
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -11,6 +13,7 @@ import os
 import secrets
 import uuid
 from flask import Flask, render_template, g, request, has_request_context
+from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import get_config, INSECURE_DEFAULTS
@@ -65,6 +68,18 @@ def create_app(config_name: str = None) -> Flask:
     # Initialize database
     db.init_app(app)
     
+    # gzip/brotli for HTML, CSS, JS and JSON responses
+    Compress(app)
+
+    # Static files: cached for a year, with ?v=<content hash> in every URL so
+    # a changed file gets a new URL (repeat visits make no static requests)
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 365 * 24 * 3600
+
+    @app.url_defaults
+    def version_static_urls(endpoint, values):
+        if endpoint == "static" and "filename" in values and "v" not in values:
+            values["v"] = static_file_version(app.static_folder, values["filename"])
+
     # Initialize CSRF protection
     csrf.init_app(app)
 
@@ -101,9 +116,9 @@ def create_app(config_name: str = None) -> Flask:
 
     # Security headers ---------------------------------------------------------
     @app.context_processor
-    def inject_csp_nonce():
-        """Expose csp_nonce() so templates can mark their inline <script>s."""
-        return {"csp_nonce": get_csp_nonce}
+    def inject_template_globals():
+        """csp_nonce() for inline <script>s, and the product name."""
+        return {"csp_nonce": get_csp_nonce, "app_name": app.config["APP_NAME"]}
 
     @app.after_request
     def set_security_headers(response):
@@ -133,6 +148,16 @@ def create_app(config_name: str = None) -> Flask:
 
 
 MIN_SECRET_LENGTH = 32
+
+
+@functools.lru_cache(maxsize=None)
+def static_file_version(static_folder: str, filename: str) -> str:
+    """Short content hash of a static file, for cache-busting URLs."""
+    try:
+        with open(os.path.join(static_folder, filename), "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()[:10]
+    except OSError:
+        return "0"
 
 
 def init_error_reporting(app: Flask) -> None:
@@ -166,8 +191,8 @@ def build_csp(nonce: str) -> str:
     return "; ".join([
         "default-src 'self'",
         f"script-src 'self' 'nonce-{nonce}' https://cdnjs.cloudflare.com",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self'",  # fonts are self-hosted
         "img-src 'self' data:",
         "connect-src 'self'",  # API calls and Socket.IO (ws/wss to self)
         "object-src 'none'",

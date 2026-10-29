@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Pass · {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1>Pass a note</h1>
+    <p>Write a story together, or hand a stash to someone nearby.</p>
+</div>
+
+<div class="pass-grid">
+    <section class="card pass-card folded" aria-labelledby="relay-title">
+        <h2 id="relay-title">Recess Relay</h2>
+        <p>One line each, passed around until the story's done.</p>
+
+        <form method="POST" action="{{ url_for('main.relay_home') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="join">
+            <div class="field">
+                <label for="relay-code">Got a code?</label>
+                <div class="row">
+                    <input id="relay-code" name="code" class="input" placeholder="ABC123" maxlength="8" autocomplete="off" autocapitalize="characters">
+                    <button type="submit" class="btn btn-quiet">Join</button>
+                </div>
+            </div>
+        </form>
+
+        <div class="pass-split">
+            {% if g.user %}
+            <form method="POST" action="{{ url_for('main.relay_home') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="start">
+                <div class="field">
+                    <label for="relay-title-input">Start one</label>
+                    <input id="relay-title-input" name="title" maxlength="200" placeholder="The Legend of the Lost Ball">
+                </div>
+                <div class="field">
+                    <label for="relay-prompt">First line <span class="muted">(optional)</span></label>
+                    <textarea id="relay-prompt" name="prompt" rows="2" placeholder="It was the last day before summer…"></textarea>
+                </div>
+                <div class="field">
+                    <label for="relay-max">How many lines</label>
+                    <input id="relay-max" name="max_entries" type="number" min="3" max="20" value="8" inputmode="numeric">
+                </div>
+                <button type="submit" class="btn">Start a relay</button>
+            </form>
+            {% else %}
+            <p><a href="{{ url_for('main.login') }}">Log in</a> to start a relay. Anyone can join one.</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="card pass-card" aria-labelledby="share-title">
+        <h2 id="share-title">Nearby Share</h2>
+        <p>Hand a stash straight to another device. It goes device to device, not through our servers.</p>
+        {% if g.user %}
+        <div class="field">
+            <label for="share-stash">Send</label>
+            {% if recent %}
+            <select id="share-stash" class="input">
+                {% for item in recent %}
+                <option value="{{ url_for('main.share_payload', stash_id=item.id) }}" {% if stash and item.id == stash.id %}selected{% endif %}>{{ item.title or "Untitled" }}</option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <p class="muted">Stash something first, then send it here.</p>
+            {% endif %}
+        </div>
+        {% if recent %}
+        <button id="start-share" class="btn">Get a code</button>
+        <div id="share-code" class="share-code" aria-live="polite">Code: —</div>
+        <p id="share-status" class="share-status">Ready when you are.</p>
+        {% endif %}
+
+        <div class="pass-split">
+            <div class="field">
+                <label for="receive-code">Receive</label>
+                <div class="row">
+                    <input id="receive-code" class="input" placeholder="Their code" autocomplete="off" autocapitalize="characters">
+                    <button id="join-share" class="btn btn-quiet">Receive</button>
+                </div>
+            </div>
+            <p id="receive-status" class="share-status">Not connected.</p>
+        </div>
+        {% else %}
+        <p><a href="{{ url_for('main.login') }}">Log in</a> to send or receive stashes.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if g.user %}
+<!-- python-socketio does not serve the JS client; load the matching v4 client -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"
+        integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO"
+        crossorigin="anonymous"></script>
+<script nonce="{{ csp_nonce() }}">
+    window.RUFF_SHARE = {
+        csrfToken: "{{ csrf_token() }}",
+        importUrl: {{ url_for('main.import_shared_stash') | tojson }}
+    };
+</script>
+<script src="{{ url_for('static', filename='share.js') }}"></script>
+{% endif %}
+{% endblock %}
