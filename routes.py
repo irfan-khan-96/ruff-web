@@ -7,7 +7,7 @@ import os
 import json
 import secrets
 import string
-from datetime import datetime
+from utils import utcnow
 from functools import wraps
 from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, g, send_file, send_from_directory
 from flask_wtf.csrf import CSRFProtect
@@ -272,7 +272,7 @@ def verify_email(token):
 
     if not user.email_verified:
         user.email_verified = True
-        user.email_verified_at = datetime.utcnow()
+        user.email_verified_at = utcnow()
         db.session.commit()
         flash("Email verified! You can now log in.", "success")
     else:
@@ -967,7 +967,7 @@ def relay_close(code):
         return redirect(url_for("main.relay_view", code=relay.code))
 
     relay.is_closed = True
-    relay.closed_at = datetime.utcnow()
+    relay.closed_at = utcnow()
     db.session.commit()
     flash("Relay closed.", "success")
     return redirect(url_for("main.relay_view", code=relay.code))

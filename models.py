@@ -2,14 +2,13 @@
 Database models for the Ruff application.
 """
 
-from datetime import datetime
 import json
 from typing import Optional, List, Dict
 from uuid import uuid4
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from utils import generate_stash_preview
+from utils import generate_stash_preview, utcnow
 
 db = SQLAlchemy()
 
@@ -25,8 +24,8 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
     email_verified_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
     
     # Relationships
     stashes = db.relationship('Stash', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -72,7 +71,7 @@ class Collection(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(500))
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     
     # Relationship to stashes
     stashes = db.relationship('Stash', backref='collection', lazy=True)
@@ -101,7 +100,7 @@ class Tag(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False, unique=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     
     # Relationship to stashes (many-to-many)
     stashes = db.relationship(
@@ -136,8 +135,8 @@ class Stash(db.Model):
     body = db.Column(db.Text, nullable=False)
     checklist = db.Column(db.Text)
     preview = db.Column(db.String(100), nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
     
     # Foreign key for collection (optional)
     collection_id = db.Column(db.Integer, db.ForeignKey('collections.id'), nullable=True)
@@ -253,7 +252,7 @@ class RelaySession(db.Model):
     prompt = db.Column(db.Text, nullable=True)
     is_closed = db.Column(db.Boolean, nullable=False, default=False)
     max_entries = db.Column(db.Integer, nullable=False, default=8)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     closed_at = db.Column(db.DateTime, nullable=True)
 
     entries = db.relationship(
@@ -287,7 +286,7 @@ class RelayEntry(db.Model):
     author_name = db.Column(db.String(80), nullable=False)
     body = db.Column(db.Text, nullable=False)
     position = db.Column(db.Integer, nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     def to_dict(self) -> dict:
         return {

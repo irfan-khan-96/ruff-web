@@ -2,11 +2,22 @@
 Utility functions for the Ruff application.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from flask import current_app
 
 DEFAULT_PREVIEW_LENGTH = 100
+
+
+def utcnow() -> datetime:
+    """
+    Current UTC time as a naive datetime.
+
+    Replaces the deprecated datetime.utcnow(). Kept naive because the
+    DateTime columns store naive UTC values.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _get_preview_length(default: int = DEFAULT_PREVIEW_LENGTH) -> int:

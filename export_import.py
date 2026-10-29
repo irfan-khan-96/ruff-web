@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Optional
 from flask import current_app
 
 from models import db, User, Stash, Collection, Tag
+from utils import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ def export_user_data(user: User) -> Dict[str, Any]:
     """
     export_data = {
         'version': '1.0',
-        'exported_at': datetime.utcnow().isoformat(),
+        'exported_at': utcnow().isoformat(),
         'user': {
             'username': user.username,
             'email': user.email,
