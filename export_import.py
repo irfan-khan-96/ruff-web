@@ -6,7 +6,13 @@ import json
 from uuid import uuid4
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+from flask import current_app
+
 from models import db, User, Stash, Collection, Tag
+
+# Column limits (titles: stashes.title, tags: tags.name)
+MAX_TITLE_LENGTH = 200
+MAX_TAG_LENGTH = 50
 
 
 def export_user_data(user: User) -> Dict[str, Any]:
@@ -137,9 +143,10 @@ def import_from_json(user: User, json_data: str) -> Dict[str, Any]:
         'success': True,
         'error': None,
         'created': {'collections': 0, 'stashes': 0, 'tags': 0},
-        'skipped': {'collections': 0, 'stashes': 0, 'tags': 0},
+        'skipped': {'collections': 0, 'stashes': 0, 'tags': 0, 'too_large': 0},
     }
-    
+    max_body = current_app.config["MAX_STASH_LENGTH"]
+
     try:
         # Import collections
         collection_map = {}  # Map old IDs to new IDs
@@ -166,6 +173,9 @@ def import_from_json(user: User, json_data: str) -> Dict[str, Any]:
         # Import tags
         tag_map = {}  # Map tag names to tag objects
         for tag_data in data.get('tags', []):
+            if not isinstance(tag_data.get('name'), str) or not 0 < len(tag_data['name']) <= MAX_TAG_LENGTH:
+                results['skipped']['tags'] += 1
+                continue
             existing = Tag.query.filter_by(name=tag_data['name']).first()
             
             if existing:
@@ -180,6 +190,12 @@ def import_from_json(user: User, json_data: str) -> Dict[str, Any]:
         
         # Import stashes
         for stash_data in data.get('stashes', []):
+            body = stash_data.get('body') or stash_data.get('text') or ""
+            title = stash_data.get('title')
+            if len(str(body)) > max_body or (title and len(str(title)) > MAX_TITLE_LENGTH):
+                results['skipped']['too_large'] += 1
+                continue
+
             # If this user already has the stash ID, skip
             existing_same_user = Stash.query.filter_by(
                 user_id=user.id,
@@ -212,8 +228,8 @@ def import_from_json(user: User, json_data: str) -> Dict[str, Any]:
             new_stash = Stash(
                 id=stash_id,
                 user_id=user.id,
-                title=stash_data.get('title'),
-                body=stash_data.get('body') or stash_data.get('text') or "",
+                title=title,
+                body=body,
                 checklist=checklist_items,
                 collection_id=collection_id,
             )

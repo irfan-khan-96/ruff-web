@@ -51,7 +51,12 @@ Key environment variables in `.env`:
 - `SECRET_KEY`: session signing key
 - `SECURITY_PASSWORD_SALT`: token signing salt
 - `REQUIRE_EMAIL_VERIFICATION`: require email verification before login
-- `RATELIMIT_STORAGE_URL`: rate limiting backend (default `memory://`)
+- `RATELIMIT_STORAGE_URL`: rate limiting backend (default `memory://`; use `redis://...` when running more than one process)
+- `PROXY_FIX_COUNT`: number of reverse proxies in front of the app (default `0`; `1` on Heroku/Render or behind nginx) so rate limits see real client IPs
+- `MAX_CONTENT_LENGTH`: largest accepted request body in bytes (default 16 MB)
+- `SOCKETIO_CORS_ORIGINS`: extra origins allowed to use Nearby Share's Socket.IO (default: same origin only)
+
+Run a single gunicorn worker with threads (see `Procfile`): Socket.IO needs every request from a client to reach the same process.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
 - `SMTP_USE_TLS`, `SMTP_USE_SSL`
 

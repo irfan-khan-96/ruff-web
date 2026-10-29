@@ -39,6 +39,32 @@ def password_fingerprint(user: User) -> str:
     ).hexdigest()
 
 
+def load_session_user(session) -> Optional[User]:
+    """
+    Return the logged-in user for a Flask session, or None.
+
+    Clears the session when it no longer identifies a valid user: the account
+    was deleted, still needs email verification, or the password changed
+    since login.
+    """
+    user_id = session.get("user_id")
+    if user_id is None:
+        return None
+
+    user = db.session.get(User, user_id)
+    if (
+        user is None
+        or (
+            current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True)
+            and not user.email_verified
+        )
+        or not hmac.compare_digest(str(session.get("pw", "")), password_fingerprint(user))
+    ):
+        session.clear()
+        return None
+    return user
+
+
 def generate_token(user: User, purpose: str) -> str:
     payload = {
         "user_id": user.id,

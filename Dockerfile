@@ -16,6 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Default to gunicorn entrypoint; override via CMD if needed
+# Default to gunicorn entrypoint; override via CMD if needed.
+# Socket.IO (Nearby Share) needs every request of a client to reach the same
+# process, so run ONE worker with many threads. To scale out, run more
+# containers behind a sticky-session load balancer with a Socket.IO message
+# queue, and set RATELIMIT_STORAGE_URL=redis://... so limits are shared.
 ENV PORT=8000
-CMD ["gunicorn", "app:create_app()", "--bind", "0.0.0.0:8000", "--workers", "3", "--threads", "2", "--access-logfile", "-", "--error-logfile", "-"]
+CMD ["gunicorn", "app:create_app()", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "100", "--access-logfile", "-", "--error-logfile", "-"]

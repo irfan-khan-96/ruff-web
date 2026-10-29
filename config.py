@@ -54,6 +54,19 @@ class Config:
     RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "200 per day;50 per hour")
     RATELIMIT_STORAGE_URL = os.getenv("RATELIMIT_STORAGE_URL", "memory://")
     
+    # Reverse proxy hops that set X-Forwarded-* (0 = trust no proxy headers)
+    PROXY_FIX_COUNT = int(os.getenv("PROXY_FIX_COUNT", "0"))
+
+    # Maximum request body size (uploads/imports); larger requests get 413
+    MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(16 * 1024 * 1024)))
+
+    # Socket.IO: extra allowed origins (comma-separated); empty = same origin only
+    SOCKETIO_CORS_ORIGINS = [
+        origin.strip()
+        for origin in os.getenv("SOCKETIO_CORS_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+
     # Stash Settings
     MAX_STASH_LENGTH = 50000  # Maximum characters per stash
     PREVIEW_LENGTH = 100  # Characters to show in preview

@@ -2,7 +2,6 @@
 Route handlers for the Ruff application.
 """
 
-import hmac
 import logging
 import os
 import json
@@ -15,6 +14,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy import or_, text, func
+from werkzeug.exceptions import RequestEntityTooLarge
 from io import BytesIO
 
 from forms import (
@@ -28,8 +28,20 @@ from forms import (
     ResetPasswordForm,
 )
 from models import db, Stash, Tag, Collection, User, RelaySession, RelayEntry
-from export_import import export_to_json, export_stash_to_text, import_from_json
-from auth_utils import generate_token, verify_token, send_email, password_fingerprint
+from export_import import (
+    export_to_json,
+    export_stash_to_text,
+    import_from_json,
+    MAX_TITLE_LENGTH,
+    MAX_TAG_LENGTH,
+)
+from auth_utils import (
+    generate_token,
+    verify_token,
+    send_email,
+    password_fingerprint,
+    load_session_user,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,25 +98,7 @@ def login_required(f):
 @bp.before_request
 def load_logged_in_user():
     """Load the logged-in user from session."""
-    user_id = session.get('user_id')
-    if user_id is None:
-        g.user = None
-    else:
-        g.user = db.session.get(User, user_id)
-        if g.user is None:
-            session.clear()
-        elif (
-            current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True)
-            and not g.user.email_verified
-        ):
-            session.clear()
-            g.user = None
-        elif not hmac.compare_digest(
-            str(session.get("pw", "")), password_fingerprint(g.user)
-        ):
-            # Password changed since this session was created: log it out
-            session.clear()
-            g.user = None
+    g.user = load_session_user(session)
 
 
 def get_collection_choices():
@@ -796,6 +790,17 @@ def import_shared_stash():
 
         if not body:
             return {"error": "Missing body"}, 400
+        if len(body) > current_app.config["MAX_STASH_LENGTH"]:
+            return {"error": "Stash body is too long"}, 400
+        if len(title) > MAX_TITLE_LENGTH:
+            return {"error": "Stash title is too long"}, 400
+
+        tag_names = data.get("tags") or []
+        if not isinstance(tag_names, list) or not all(
+            isinstance(name, str) and 0 < len(name.strip()) <= MAX_TAG_LENGTH
+            for name in tag_names
+        ):
+            return {"error": "Invalid tags"}, 400
 
         new_stash = Stash(
             title=title or None,
@@ -807,12 +812,14 @@ def import_shared_stash():
         db.session.add(new_stash)
         db.session.flush()
 
-        for tag_name in data.get("tags", []) or []:
-            new_stash.add_tag(tag_name)
+        for tag_name in tag_names:
+            new_stash.add_tag(tag_name.strip())
 
         db.session.commit()
         logger.info(f"Shared stash imported for user {g.user.username}: {new_stash.id}")
         return {"success": True, "id": new_stash.id}, 200
+    except RequestEntityTooLarge:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error importing shared stash: {str(e)}")
@@ -1012,12 +1019,16 @@ def import_data():
         )
         
         if result['skipped']['stashes'] > 0:
-            message += f"(Skipped {result['skipped']['stashes']} existing stashes)"
+            message += f"(Skipped {result['skipped']['stashes']} existing stashes) "
+        if result['skipped']['too_large'] > 0:
+            message += f"(Skipped {result['skipped']['too_large']} stashes over the size limit)"
         
         logger.info(f"Data imported for user {g.user.username}: {result}")
         flash(message, "success")
         return redirect(url_for("main.view_stashes"))
-    
+
+    except RequestEntityTooLarge:
+        raise
     except Exception as e:
         logger.error(f"Error importing data: {str(e)}")
         flash(f"Import failed: {str(e)}", "error")

@@ -5,7 +5,7 @@
 {% block content %}
     <div class="error-container">
         <h1>400 - Bad Request</h1>
-        <p>Sorry, there was an issue with your request. Please try again.</p>
+        <p>{{ message or "Sorry, there was an issue with your request. Please try again." }}</p>
         <a href="{{ url_for('main.index') }}" class="action-button">Back to Home</a>
     </div>
 {% endblock %}

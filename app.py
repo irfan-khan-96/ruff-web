@@ -10,6 +10,7 @@ import logging.handlers
 import os
 import uuid
 from flask import Flask, render_template, g, request, has_request_context
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import get_config, INSECURE_DEFAULTS
 from sockets import init_socketio
@@ -44,6 +45,17 @@ def create_app(config_name: str = None) -> Flask:
             raise RuntimeError(
                 f"{', '.join(insecure)} must be set to a strong random value in production."
             )
+
+    # Behind a reverse proxy, take the client IP/scheme from X-Forwarded-*
+    # so rate limits apply per client rather than to the proxy's address
+    proxy_count = app.config.get("PROXY_FIX_COUNT", 0)
+    if proxy_count > 0:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=proxy_count,
+            x_proto=proxy_count,
+            x_host=proxy_count,
+        )
 
     # Initialize database
     db.init_app(app)
@@ -192,3 +204,14 @@ def register_error_handlers(app: Flask) -> None:
         """Handle 400 errors."""
         logger.warning(f"400 error: {error}")
         return render_template("errors/400.html"), 400
+
+    @app.errorhandler(413)
+    def payload_too_large_error(error):
+        """Handle request bodies over MAX_CONTENT_LENGTH."""
+        logger.warning(f"413 error: {error}")
+        if request.is_json:
+            return {"error": "Request too large"}, 413
+        return render_template(
+            "errors/400.html",
+            message="That file or request is too large to upload.",
+        ), 413
