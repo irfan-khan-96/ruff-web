@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from app import create_app
+from config import get_config
 from models import db
 
 # this is the Alembic Config object, which provides
@@ -19,39 +19,42 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Prefer DATABASE_URL env var; fallback to app config
+# Prefer DATABASE_URL env var; fallback to app config. Read the config directly
+# rather than building the app: migrations need only the database URL, not the
+# app's secrets.
 flask_env = os.getenv("FLASK_ENV") or "production"
-app = create_app(flask_env)
-with app.app_context():
-    db_url = os.getenv("DATABASE_URL") or app.config.get("SQLALCHEMY_DATABASE_URI")
-    target_metadata = db.metadata
+db_url = os.getenv("DATABASE_URL") or get_config(flask_env).SQLALCHEMY_DATABASE_URI
+target_metadata = db.metadata
 
-    def run_migrations_offline():
-        url = db_url
+
+def run_migrations_offline():
+    url = db_url
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        compare_type=True,
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online():
+    connectable = create_engine(db_url, poolclass=pool.NullPool)
+
+    with connectable.connect() as connection:
         context.configure(
-            url=url,
+            connection=connection,
             target_metadata=target_metadata,
-            literal_binds=True,
             compare_type=True,
         )
 
         with context.begin_transaction():
             context.run_migrations()
 
-    def run_migrations_online():
-        connectable = create_engine(db_url, poolclass=pool.NullPool)
 
-        with connectable.connect() as connection:
-            context.configure(
-                connection=connection,
-                target_metadata=target_metadata,
-                compare_type=True,
-            )
-
-            with context.begin_transaction():
-                context.run_migrations()
-
-    if context.is_offline_mode():
-        run_migrations_offline()
-    else:
-        run_migrations_online()
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

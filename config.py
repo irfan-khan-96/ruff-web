@@ -7,13 +7,19 @@ Loads configuration from environment variables with sensible defaults.
 import os
 from datetime import timedelta
 
+# Placeholder secrets for local development only; app.py refuses to start
+# outside development/testing while either is still in use.
+DEV_SECRET_KEY = "dev-secret-key-change-in-production"
+DEV_PASSWORD_SALT = "dev-salt-change-in-production"
+INSECURE_DEFAULTS = {DEV_SECRET_KEY, DEV_PASSWORD_SALT}
+
 
 class Config:
     """Base configuration class."""
 
     # Flask Settings
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
-    SECURITY_PASSWORD_SALT = os.getenv("SECURITY_PASSWORD_SALT", "dev-salt-change-in-production")
+    SECRET_KEY = os.getenv("SECRET_KEY", DEV_SECRET_KEY)
+    SECURITY_PASSWORD_SALT = os.getenv("SECURITY_PASSWORD_SALT", DEV_PASSWORD_SALT)
     DEBUG = os.getenv("FLASK_ENV", "production") == "development"
     
     # Session Settings

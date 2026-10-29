@@ -45,3 +45,10 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local databases (never commit user data)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+instance/

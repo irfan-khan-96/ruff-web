@@ -11,7 +11,7 @@ import os
 import uuid
 from flask import Flask, render_template, g, request, has_request_context
 
-from config import get_config
+from config import get_config, INSECURE_DEFAULTS
 from sockets import init_socketio
 from routes import bp, csrf, limiter
 from models import db
@@ -32,7 +32,19 @@ def create_app(config_name: str = None) -> Flask:
     # Load configuration
     config = get_config(config_name)
     app.config.from_object(config)
-    
+
+    # Refuse to run outside dev/testing with the publicly known default secrets:
+    # anyone could forge sessions (log in as any user) or reset/verify tokens.
+    if not (app.config.get("DEBUG") or app.config.get("TESTING")):
+        insecure = [
+            key for key in ("SECRET_KEY", "SECURITY_PASSWORD_SALT")
+            if app.config.get(key) in INSECURE_DEFAULTS or not app.config.get(key)
+        ]
+        if insecure:
+            raise RuntimeError(
+                f"{', '.join(insecure)} must be set to a strong random value in production."
+            )
+
     # Initialize database
     db.init_app(app)
     

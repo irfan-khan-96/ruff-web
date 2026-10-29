@@ -26,7 +26,10 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and set `SECRET_KEY` and `SECURITY_PASSWORD_SALT`.
+Edit `.env` and set `SECRET_KEY` and `SECURITY_PASSWORD_SALT` (the app refuses to start in production without them). Generate each with:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
 4. Initialize the database:
 ```bash
 alembic upgrade head

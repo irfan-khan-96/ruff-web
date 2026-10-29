@@ -3,6 +3,8 @@ Authentication helpers: token generation and email sending.
 """
 
 from typing import Optional, Tuple
+import hashlib
+import hmac
 import logging
 import smtplib
 from email.message import EmailMessage
@@ -22,11 +24,26 @@ def _serializer() -> URLSafeTimedSerializer:
     )
 
 
+def password_fingerprint(user: User) -> str:
+    """
+    Keyed digest of the user's password hash.
+
+    Changes whenever the password changes, so it can invalidate tokens and
+    sessions, without exposing the hash itself (token payloads are signed,
+    not encrypted, and sessions are client-side cookies).
+    """
+    return hmac.new(
+        current_app.config["SECRET_KEY"].encode(),
+        user.password_hash.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
 def generate_token(user: User, purpose: str) -> str:
     payload = {
         "user_id": user.id,
         "purpose": purpose,
-        "pw": user.password_hash,
+        "pw": password_fingerprint(user),
     }
     return _serializer().dumps(payload)
 
@@ -46,7 +63,7 @@ def verify_token(token: str, purpose: str, max_age: int) -> Tuple[Optional[User]
     if user is None:
         return None, "invalid"
 
-    if data.get("pw") != user.password_hash:
+    if not hmac.compare_digest(str(data.get("pw", "")), password_fingerprint(user)):
         return None, "invalid"
 
     return user, None

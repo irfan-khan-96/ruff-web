@@ -2,6 +2,7 @@
 Route handlers for the Ruff application.
 """
 
+import hmac
 import logging
 import os
 import json
@@ -28,7 +29,7 @@ from forms import (
 )
 from models import db, Stash, Tag, Collection, User, RelaySession, RelayEntry
 from export_import import export_to_json, export_stash_to_text, import_from_json
-from auth_utils import generate_token, verify_token, send_email
+from auth_utils import generate_token, verify_token, send_email, password_fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +91,18 @@ def load_logged_in_user():
         g.user = None
     else:
         g.user = db.session.get(User, user_id)
-        if (
-            g.user
-            and current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True)
+        if g.user is None:
+            session.clear()
+        elif (
+            current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True)
             and not g.user.email_verified
         ):
+            session.clear()
+            g.user = None
+        elif not hmac.compare_digest(
+            str(session.get("pw", "")), password_fingerprint(g.user)
+        ):
+            # Password changed since this session was created: log it out
             session.clear()
             g.user = None
 
@@ -201,6 +209,7 @@ def login():
         
         session.clear()
         session['user_id'] = user.id
+        session['pw'] = password_fingerprint(user)
         session.permanent = bool(form.remember.data)
         logger.info(f"User {user.username} logged in")
         flash(f"Welcome back, {user.username}!", "success")
