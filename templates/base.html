@@ -37,7 +37,10 @@
                     </li>
                     <li class="nav-user">
                         <span class="nav-username">{{ g.user.username }}</span>
-                        <a href="{{ url_for('main.logout') }}" class="nav-link logout-link">Logout</a>
+                        <form method="POST" action="{{ url_for('main.logout') }}" class="logout-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="nav-link logout-link">Logout</button>
+                        </form>
                     </li>
                 {% else %}
                     <li><a href="{{ url_for('main.relay_home') }}" class="nav-link">Recess Relay</a></li>

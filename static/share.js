@@ -24,7 +24,15 @@
     }
 
     function generateCode() {
-        return Math.random().toString(36).slice(2, 8).toUpperCase();
+        // Cryptographically random 6-character code (Math.random is guessable)
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let code = "";
+        while (code.length < 6) {
+            const [byte] = crypto.getRandomValues(new Uint8Array(1));
+            // 252 = 7 * 36: skip higher bytes so every character is equally likely
+            if (byte < 252) code += alphabet[byte % 36];
+        }
+        return code;
     }
 
     function createPeerConnection() {

@@ -3,12 +3,15 @@ Export/Import utilities for Ruff stashes.
 """
 
 import json
+import logging
 from uuid import uuid4
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from flask import current_app
 
 from models import db, User, Stash, Collection, Tag
+
+logger = logging.getLogger(__name__)
 
 # Column limits (titles: stashes.title, tags: tags.name)
 MAX_TITLE_LENGTH = 200
@@ -257,8 +260,10 @@ def import_from_json(user: User, json_data: str) -> Dict[str, Any]:
     
     except Exception as e:
         db.session.rollback()
+        # Log the details; show the user a generic message (no DB internals)
+        logger.error(f"Import failed for user {user.id}: {e}")
         return {
             'success': False,
-            'error': f'Import failed: {str(e)}',
+            'error': 'The file could not be imported. Check that it is a Ruff export.',
             'created': {'collections': 0, 'stashes': 0, 'tags': 0},
         }

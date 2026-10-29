@@ -75,7 +75,7 @@ def readyz():
         return {"status": "ok"}, 200
     except Exception as e:
         logger.error(f"Readiness check failed: {e}")
-        return {"status": "error", "reason": str(e)}, 503
+        return {"status": "error"}, 503
 
 
 @bp.route("/sw.js")
@@ -248,7 +248,7 @@ def signup():
     return render_template("signup.html", form=form)
 
 
-@bp.route("/logout")
+@bp.route("/logout", methods=["POST"])
 def logout():
     """Handle user logout."""
     if g.user is not None:
@@ -823,7 +823,7 @@ def import_shared_stash():
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error importing shared stash: {str(e)}")
-        return {"error": str(e)}, 500
+        return {"error": "Failed to import shared stash"}, 500
 
 
 # ============================================================================
@@ -1031,7 +1031,7 @@ def import_data():
         raise
     except Exception as e:
         logger.error(f"Error importing data: {str(e)}")
-        flash(f"Import failed: {str(e)}", "error")
+        flash("Import failed. Please check the file and try again.", "error")
         return redirect(url_for("main.import_data"))
 
 
@@ -1070,7 +1070,7 @@ def bulk_delete():
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error in bulk delete: {str(e)}")
-        return {"error": str(e)}, 500
+        return {"error": "Failed to delete stashes"}, 500
 
 
 @bp.route("/stash/bulk/move", methods=["POST"])
@@ -1118,4 +1118,4 @@ def bulk_move():
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error in bulk move: {str(e)}")
-        return {"error": str(e)}, 500
+        return {"error": "Failed to move stashes"}, 500

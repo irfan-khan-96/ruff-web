@@ -409,8 +409,18 @@ body.recess-theme::after {
     color: var(--text-color);
 }
 
+.logout-form {
+    display: inline;
+    margin: 0;
+}
+
 .logout-link {
     color: #e74c3c;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
 }
 
 .logout-link:hover {

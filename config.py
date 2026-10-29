@@ -86,6 +86,8 @@ class ProductionConfig(Config):
     """Production configuration."""
     DEBUG = False
     TESTING = False
+    # HTTPS-only session cookie unless explicitly disabled (SESSION_COOKIE_SECURE=0)
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "1") == "1"
 
 
 class TestingConfig(Config):

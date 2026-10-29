@@ -1,7 +1,9 @@
-const CACHE_VERSION = "ruff-v1";
+// Bump on deploys that change cached assets; old caches are deleted on activate.
+// v2: pages are no longer cached, so v1 caches (which held private pages) go away.
+const CACHE_VERSION = "ruff-v2";
+// Public static assets only. Never pre-cache or cache app pages: they contain
+// a logged-in user's stashes and would survive logout on shared devices.
 const CORE_ASSETS = [
-  "/",
-  "/stashes",
   "/static/styles.css",
   "/static/script.js",
   "/static/share.js",
@@ -9,6 +11,12 @@ const CORE_ASSETS = [
   "/static/images/mural.svg",
   "/static/manifest.json"
 ];
+
+const OFFLINE_HTML =
+  '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  "<title>Offline - Ruff</title>" +
+  '<body style="font-family:sans-serif;text-align:center;padding:3rem 1rem">' +
+  "<h1>You're offline</h1><p>Reconnect to see your stashes.</p></body>";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -33,33 +41,31 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (request.mode === "navigate") {
+    // Network only; show a generic offline page instead of cached private pages
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match("/")))
-    );
-    return;
-  }
-
-  if (url.pathname.startsWith("/static/")) {
-    event.respondWith(
-      caches.match(request).then((cached) =>
-        cached ||
-        fetch(request).then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
-          return response;
-        })
+      fetch(request).catch(
+        () => new Response(OFFLINE_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } })
       )
     );
     return;
   }
 
-  event.respondWith(
-    fetch(request).catch(() => caches.match(request))
-  );
+  if (url.origin === self.location.origin && url.pathname.startsWith("/static/")) {
+    // Stale-while-revalidate: serve from cache, refresh it in the background
+    // so updated assets reach returning users on their next visit
+    event.respondWith(
+      caches.open(CACHE_VERSION).then((cache) =>
+        cache.match(request).then((cached) => {
+          const network = fetch(request)
+            .then((response) => {
+              if (response.ok) cache.put(request, response.clone());
+              return response;
+            })
+            .catch(() => cached);
+          return cached || network;
+        })
+      )
+    );
+  }
+  // Everything else (API calls, Socket.IO, CDN scripts) goes straight to the network
 });
