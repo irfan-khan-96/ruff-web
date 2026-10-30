@@ -23,6 +23,18 @@ cp .env.example .env              # set FLASK_ENV=development; dev secrets can s
 alembic upgrade head              # create or update the database (same as production)
 python run.py                     # http://127.0.0.1:5000 (PORT/HOST to change)
 ```
+To sign in locally, enter any email address: the sign-in link is printed in the terminal running the server. Open it in your browser.
+
+### On Windows (PowerShell)
+No need to activate the virtual environment; call its Python directly:
+```powershell
+python -m venv venv
+venv\Scripts\python -m pip install -r requirements-dev.txt -c requirements.lock
+copy .env.example .env               # then set FLASK_ENV=development in .env
+venv\Scripts\python -m alembic upgrade head
+venv\Scripts\python run.py
+```
+Run the tests the same way: `venv\Scripts\python -m pytest -q` runs everything (about a minute and a half); add `--ignore-glob="test_e2e_*"` for a quick run without the browser tests. Install Chromium for the browser tests once with `venv\Scripts\python -m playwright install chromium`.
 
 ### The full stack, as in production
 ```bash
