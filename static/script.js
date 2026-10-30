@@ -341,6 +341,15 @@
             if (!response.ok) return toast(data.error || "Couldn't fold that. Try again?", "error");
             const link = `${data.url}#${b64.encode(rawKey)}`;
             $("fold-url").value = link;
+            // QR drawn here, never by a server: the link carries the key after #
+            if (window.qrcode) {
+                const qr = window.qrcode(0, "M");
+                qr.addData(link, "Byte");
+                qr.make();
+                const img = $("fold-qr");
+                img.src = qr.createDataURL(5, 2);
+                img.hidden = false;
+            }
             $("fold-expiry").textContent = `Unopened, it expires ${new Date(data.expires_at + "Z").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}.`;
             panel.hidden = false;
             panel.scrollIntoView({ behavior: "smooth", block: "nearest" });

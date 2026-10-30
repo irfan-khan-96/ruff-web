@@ -12,7 +12,6 @@
 x-app-env: &app-env
   DATABASE_URL: postgresql://ruff:ruff@db:5432/ruff
   RATELIMIT_STORAGE_URL: redis://redis:6379/0
-  SOCKETIO_MESSAGE_QUEUE: redis://redis:6379/1
   SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
   SECURITY_PASSWORD_SALT: ${SECURITY_PASSWORD_SALT:?set SECURITY_PASSWORD_SALT in .env}
   # Local: plain HTTP, and no mail server: sign-in links are printed in the

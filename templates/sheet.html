@@ -32,7 +32,6 @@
             <a class="btn btn-quiet" href="{{ url_for('main.index') }}">New sheet</a>
             {% if g.user %}
             <button type="button" class="btn btn-quiet" id="fold-button">Fold &amp; pass</button>
-            <a class="btn btn-quiet" id="share-link" href="{{ url_for('main.share_stash', stash_id=stash_id) if stash_id else '#' }}">Pass it nearby</a>
             <form method="POST" action="{{ url_for('main.relay_home') }}" id="relay-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="action" value="start">
@@ -48,7 +47,11 @@
         {% if g.user %}
         <section class="card fold-panel folded" id="fold-panel" hidden aria-labelledby="fold-title">
             <h2 id="fold-title" class="hand">Folded!</h2>
-            <p>Anyone with this link can open the note <strong>once</strong>. Then it's gone. It's locked in your browser; we only ever see scrambled text.</p>
+            <p>Whoever opens it first reads it <strong>once</strong>. Then it's gone. It's locked in your browser; we only ever see scrambled text.</p>
+            <div class="fold-qr">
+                <img id="fold-qr" alt="QR code for the folded note: scan it with a phone camera to open the note" width="200" height="200" hidden>
+                <p class="muted">Passing it in person? Let them scan this. Far away? Share the link.</p>
+            </div>
             <div class="row">
                 <label for="fold-url" class="sr-only">Folded note link</label>
                 <input id="fold-url" class="input" readonly>
@@ -71,4 +74,8 @@
         </nav>
     </aside>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if g.user %}<script src="{{ url_for('static', filename='vendor/qrcode.js') }}"></script>{% endif %}
 {% endblock %}

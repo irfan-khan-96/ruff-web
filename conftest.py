@@ -1,7 +1,7 @@
 """
 Shared fixtures for the browser end-to-end tests (test_e2e_*.py).
 
-They run the real app (Socket.IO included) on a free port with a file
+They run the real app on a free port with a file
 database and drive it with Playwright's Chromium. They are skipped when
 Playwright or its browser isn't installed; see requirements-dev.txt.
 """
@@ -65,7 +65,7 @@ def live_server(tmp_path_factory):
     from config import TestingConfig
     from models import db
     import routes
-    from sockets import socketio
+    from werkzeug.serving import make_server
 
     patch = pytest.MonkeyPatch()
     # Threads need a shared database; the testing default is per-connection memory
@@ -88,19 +88,10 @@ def live_server(tmp_path_factory):
         db.create_all()
 
     port = _free_port()
-    threading.Thread(
-        target=socketio.run,
-        args=(app,),
-        kwargs={
-            "host": "127.0.0.1",
-            "port": port,
-            "allow_unsafe_werkzeug": True,
-            "use_reloader": False,  # the reloader only works on the main thread
-            "log_output": False,
-        },
-        daemon=True,
-    ).start()
+    server = make_server("127.0.0.1", port, app, threaded=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
     yield LiveServer(app, f"http://127.0.0.1:{port}", outbox)
+    server.shutdown()
     patch.undo()
 
 

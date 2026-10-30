@@ -557,13 +557,13 @@ def open_folded(note_id):
 
 
 # ============================================================================
-# Pass (Recess Relay + Nearby Share) and the Teachers Lounge (settings)
+# Pass (folded notes + Recess Relay) and the Teachers Lounge (settings)
 # ============================================================================
 
 @bp.route("/pass")
-def pass_hub(stash_id=None):
-    """Pass a note: fold one, start or join a relay, or share nearby."""
-    return render_template("pass.html", stash_id=stash_id)
+def pass_hub():
+    """Pass a note: fold one, or start or join a relay."""
+    return render_template("pass.html")
 
 
 @bp.route("/lounge")
@@ -647,86 +647,15 @@ def export_stash(stash_id):
 
 
 # ============================================================================
-# Nearby Share Routes (WebRTC data channel)
+# Old Nearby Share links: passing is by folded note now
 # ============================================================================
 
 @bp.route("/share")
-@login_required
-def share():
-    """Nearby Share lives on the Pass page."""
-    return redirect(url_for("main.pass_hub"))
-
-
 @bp.route("/share/<stash_id>")
-@login_required
-def share_stash(stash_id):
-    """The Pass page with this note ready to send."""
-    if not UUID_RE.match(stash_id):
-        abort(404)
-    return pass_hub(stash_id=stash_id)
-
-
-@bp.route("/share/payload/<stash_id>")
-@login_required
-def share_payload(stash_id):
-    """Provide stash payload for nearby sharing."""
-    stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-    return {
-        "id": stash.id,
-        "title": stash.title,
-        "body": stash.body,
-        "checklist": stash.get_checklist(),
-        "tags": [tag.name for tag in stash.tags],
-    }, 200
-
-
-@bp.route("/share/import", methods=["POST"])
-@login_required
-def import_shared_stash():
-    """Import a shared stash payload into the current user's account."""
-    try:
-        data = request.get_json() or {}
-        title = (data.get("title") or "").strip()
-        body = (data.get("body") or "").strip()
-        checklist_items = data.get("checklist")
-        if not isinstance(checklist_items, list):
-            checklist_items = []
-
-        if not body:
-            return {"error": "Missing body"}, 400
-        if len(body) > current_app.config["MAX_STASH_LENGTH"]:
-            return {"error": "Stash body is too long"}, 400
-        if len(title) > MAX_TITLE_LENGTH:
-            return {"error": "Stash title is too long"}, 400
-
-        tag_names = data.get("tags") or []
-        if not isinstance(tag_names, list) or not all(
-            isinstance(name, str) and 0 < len(name.strip()) <= MAX_TAG_LENGTH
-            for name in tag_names
-        ):
-            return {"error": "Invalid tags"}, 400
-
-        new_stash = Stash(
-            title=title or None,
-            body=body,
-            checklist=checklist_items,
-            user_id=g.user.id,
-        )
-        db.session.add(new_stash)
-        db.session.flush()
-
-        for tag_name in tag_names:
-            new_stash.add_tag(tag_name.strip())
-
-        db.session.commit()
-        logger.info(f"Shared stash imported for user {g.user.username}: {new_stash.id}")
-        return {"success": True, "id": new_stash.id}, 200
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error importing shared stash: {str(e)}")
-        return {"error": "Failed to import shared stash"}, 500
+def share(stash_id=None):
+    if stash_id and UUID_RE.match(stash_id):
+        return redirect(url_for("main.view_stash", stash_id=stash_id))
+    return redirect(url_for("main.pass_hub"))
 
 
 # ============================================================================

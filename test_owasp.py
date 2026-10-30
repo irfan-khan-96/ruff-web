@@ -2,7 +2,7 @@
 Regression tests for the OWASP Top 10:2025 review (see SECURITY.md).
 
 Grouped by category; earlier controls (secrets, tokens, headers, CSRF, size
-limits, Socket.IO auth) are covered in test_security.py.
+limits) are covered in test_security.py.
 """
 
 import logging
@@ -14,7 +14,6 @@ import routes
 from app import create_app
 from config import ProductionConfig, TestingConfig
 from models import db, User, Stash
-from sockets import socketio, MAX_JOINS_PER_MINUTE
 from conftest import sign_in
 
 
@@ -58,7 +57,6 @@ def bob_stash(app):
 
 @pytest.mark.parametrize("method, path", [
     ("get", "/export/stash/{id}"),
-    ("get", "/share/payload/{id}"),
     ("post", "/stashes/{id}/delete"),
     ("post", "/relay/start/{id}"),
 ])
@@ -69,11 +67,17 @@ def test_other_users_stash_is_not_found(app, alice, bob_stash, method, path):
     assert db.session.get(Stash, bob_stash.id).body == "bob's secret"
 
 
-@pytest.mark.parametrize("path", ["/stashes/{id}", "/share/{id}"])
-def test_page_shells_never_contain_note_data(app, alice, bob_stash, path):
+def test_page_shells_never_contain_note_data(app, alice, bob_stash):
     """Notes reach a page only through the owner's sync, never in server HTML."""
-    response = logged_in_client(app, "alice").get(path.format(id=bob_stash.id))
+    response = logged_in_client(app, "alice").get(f"/stashes/{bob_stash.id}")
     assert response.status_code == 200 and b"bob's secret" not in response.data
+
+
+def test_old_nearby_share_links_redirect(app, alice, bob_stash):
+    client = logged_in_client(app, "alice")
+    assert client.get("/share").headers["Location"] == "/pass"
+    assert client.get(f"/share/{bob_stash.id}").headers["Location"] == f"/stashes/{bob_stash.id}"
+    assert client.get("/share/not-a-uuid").headers["Location"] == "/pass"
 
 
 def test_sync_never_returns_or_accepts_other_users_notes(app, alice, bob_stash):
@@ -94,47 +98,6 @@ def test_cannot_overwrite_other_users_stash(app, alice, bob_stash):
                            headers={"Accept": "application/json"})
     assert response.status_code == 404
     assert db.session.get(Stash, bob_stash.id).body == "bob's secret"
-
-
-def test_share_room_holds_only_sender_and_receiver(app, alice):
-    make_user("mallory")
-    sender = socketio.test_client(app, flask_test_client=logged_in_client(app, "alice"))
-    receiver = socketio.test_client(app, flask_test_client=logged_in_client(app, "alice"))
-    intruder = socketio.test_client(app, flask_test_client=logged_in_client(app, "mallory"))
-    for client in (sender, receiver):
-        client.emit("join_room", {"room": "ROOM01"})
-    intruder.get_received()
-
-    intruder.emit("join_room", {"room": "ROOM01"})
-    assert [(m["name"], m["args"][0]) for m in intruder.get_received()] == [
-        ("join_refused", {"reason": "room_full"})
-    ]
-    # And nobody in the room heard about the intruder
-    sender.get_received()
-    receiver.emit("signal", {"room": "ROOM01", "payload": {"type": "offer"}})
-    assert [m["name"] for m in sender.get_received()] == ["signal"]
-    assert intruder.get_received() == []
-
-
-def test_signal_requires_room_membership(app, alice):
-    member = socketio.test_client(app, flask_test_client=logged_in_client(app, "alice"))
-    outsider = socketio.test_client(app, flask_test_client=logged_in_client(app, "alice"))
-    member.emit("join_room", {"room": "ROOM02"})
-    member.get_received()
-
-    outsider.emit("signal", {"room": "ROOM02", "payload": {"type": "offer", "evil": True}})
-    assert member.get_received() == []
-
-
-def test_share_code_guessing_is_throttled(app, alice):
-    guesser = socketio.test_client(app, flask_test_client=logged_in_client(app, "alice"))
-    for n in range(MAX_JOINS_PER_MINUTE):
-        guesser.emit("join_room", {"room": f"G{n:05d}"})
-    guesser.get_received()
-    guesser.emit("join_room", {"room": "GUESS9"})
-    assert [(m["name"], m["args"][0]) for m in guesser.get_received()] == [
-        ("join_refused", {"reason": "too_many_attempts"})
-    ]
 
 
 # A04 Cryptographic Failures ----------------------------------------------------

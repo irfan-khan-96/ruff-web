@@ -9,9 +9,9 @@ Please report vulnerabilities privately through GitHub's **Security → Report a
 Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2025](https://owasp.org/Top10/) categories, not a third-party audit or certification. Most controls below are backed by automated tests (`test_owasp.py` is organised by category; see also `test_security.py` and the `test_e2e_*.py` browser tests); configuration-level items (CI pinning, Dependabot, Docker user) were verified by hand.
 
 ### A01 Broken Access Control
-- Every stash, tag, export and share action is filtered by the logged-in user; another user's stash returns 404, and saving over it is refused (tested for every route).
+- Every stash, tag, export and fold action is filtered by the logged-in user; another user's stash returns 404, and saving over it is refused (tested for every route).
 - Relay sessions can only be closed by their owner.
-- Nearby Share (Socket.IO): logged-in users only, same-origin only, a share room holds at most two peers, only room members can send signalling messages, and join attempts are throttled (10/minute per connection) to stop share-code guessing.
+- Folded notes: only signed-in users can fold; each note is handed over exactly once (an atomic delete-and-return) and expires unopened after `FOLD_TTL_DAYS`.
 - CSRF tokens on every form and JSON request; logout is a CSRF-protected POST.
 
 ### A02 Security Misconfiguration
@@ -25,7 +25,7 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - Direct dependencies are pinned in `requirements.txt` and every transitive one in `requirements.lock`; the image and CI install from the lock. CI runs `pip-audit` on the lock and fails on known vulnerabilities.
 - Dependabot opens weekly update PRs for Python packages, GitHub Actions and the Docker base image.
 - GitHub Actions are pinned to full commit SHAs.
-- The only third-party resource is the Socket.IO client on the Pass page, loaded from cdnjs with Subresource Integrity. Fonts are self-hosted.
+- No third-party resources at runtime: scripts, fonts and the QR code library (`static/vendor/`, checksum-verified against npm) are self-hosted, and the CSP allows scripts from the app's own origin only.
 
 ### A04 Cryptographic Failures
 - No passwords are stored or accepted. Sign-in links are HMAC-signed, expire after 15 minutes, and are single-use (a per-account nonce, rotated on every request and on use).
@@ -49,7 +49,7 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - Sessions are renewed on sign-in (no fixation); "Sign out everywhere" invalidates every session at once.
 
 ### A08 Software or Data Integrity Failures
-- Subresource Integrity on the CDN script; SHA-pinned CI actions.
+- No CDN scripts (everything is self-hosted); SHA-pinned CI actions.
 - JSON imports are parsed as plain data and validated (types, lengths); nothing is deserialised into code.
 - The service worker caches only same-origin static files, never pages with user data.
 

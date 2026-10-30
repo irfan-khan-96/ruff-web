@@ -190,6 +190,9 @@ def test_fold_pass_and_unfold_once(live_server, new_page):
     sender.click("#fold-button")
     expect(sender.locator("#fold-panel")).to_be_visible()
     link = sender.locator("#fold-url").input_value()
+    qr = sender.locator("#fold-qr")
+    expect(qr).to_be_visible()
+    assert qr.get_attribute("src").startswith("data:image/gif;base64,")
     assert re.search(r"/f/[A-Za-z0-9_-]{16,32}#[A-Za-z0-9_-]{40,}$", link)
 
     # The server holds only ciphertext

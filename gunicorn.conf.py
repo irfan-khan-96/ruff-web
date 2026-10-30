@@ -8,12 +8,11 @@ import os
 # VII Port binding: the platform says where to listen
 bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
 
-# Socket.IO (Nearby Share) needs all of a client's requests to reach the same
-# process, so concurrency within a container comes from threads, not workers.
-# Scale out by running more containers (with SOCKETIO_MESSAGE_QUEUE and
-# RATELIMIT_STORAGE_URL pointing at Redis, and sticky sessions).
+# VIII Concurrency: processes x threads. The app is stateless, so add workers
+# or containers freely; with more than one process, point RATELIMIT_STORAGE_URL
+# at Redis so rate limits are shared.
 workers = int(os.getenv("WEB_CONCURRENCY", "1"))
-threads = int(os.getenv("GUNICORN_THREADS", "100"))
+threads = int(os.getenv("GUNICORN_THREADS", "16"))
 
 # IX Disposability: finish in-flight requests on SIGTERM, then exit
 graceful_timeout = int(os.getenv("GUNICORN_GRACEFUL_TIMEOUT", "20"))

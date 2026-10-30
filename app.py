@@ -17,7 +17,6 @@ from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import get_config, INSECURE_DEFAULTS
-from sockets import init_socketio
 from routes import bp, csrf, limiter
 from models import db
 
@@ -89,9 +88,6 @@ def create_app(config_name: str = None) -> Flask:
     # Register blueprints
     app.register_blueprint(bp)
 
-    # Initialize Socket.IO for nearby sharing
-    init_socketio(app)
-    
     # Request ID + structured logging context
     @app.before_request
     def add_request_id():
@@ -192,17 +188,17 @@ def build_csp(nonce: str) -> str:
     """
     Content-Security-Policy for every response.
 
-    Scripts: own origin, the pinned Socket.IO client on cdnjs, and inline
-    scripts carrying this request's nonce. Inline styles stay allowed because
+    Scripts: own origin only (everything is self-hosted), plus inline scripts
+    carrying this request's nonce. Inline styles stay allowed because
     templates use <style> blocks and style attributes throughout.
     """
     return "; ".join([
         "default-src 'self'",
-        f"script-src 'self' 'nonce-{nonce}' https://cdnjs.cloudflare.com",
+        f"script-src 'self' 'nonce-{nonce}'",
         "style-src 'self' 'unsafe-inline'",
         "font-src 'self'",  # fonts are self-hosted
         "img-src 'self' data:",
-        "connect-src 'self'",  # API calls and Socket.IO (ws/wss to self)
+        "connect-src 'self'",  # sync and fold API calls
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",

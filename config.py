@@ -76,17 +76,6 @@ class Config:
     # Maximum request body size (uploads/imports); larger requests get 413
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(16 * 1024 * 1024)))
 
-    # Socket.IO: extra allowed origins (comma-separated); empty = same origin only
-    # Socket.IO across several processes/containers: a shared message queue
-    # (e.g. redis://redis:6379/1). Empty = single process.
-    SOCKETIO_MESSAGE_QUEUE = os.getenv("SOCKETIO_MESSAGE_QUEUE") or None
-
-    SOCKETIO_CORS_ORIGINS = [
-        origin.strip()
-        for origin in os.getenv("SOCKETIO_CORS_ORIGINS", "").split(",")
-        if origin.strip()
-    ]
-
     # Recess Relay sessions (and their entries) are deleted after this many days
     RELAY_RETENTION_DAYS = int(os.getenv("RELAY_RETENTION_DAYS", "30"))
 

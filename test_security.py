@@ -1,5 +1,5 @@
 """
-Security regression tests: secrets, tokens, sessions, Socket.IO auth, limits.
+Security regression tests: secrets, tokens, sessions, limits.
 """
 
 import base64
@@ -15,7 +15,6 @@ from auth_utils import login_link_token, read_link_token, signup_link_token
 from conftest import sign_in
 from config import ProductionConfig, TestingConfig, DEV_SECRET_KEY, DEV_PASSWORD_SALT
 from models import db, User
-from sockets import socketio
 
 
 
@@ -124,39 +123,11 @@ def test_logout_requires_post(client):
     assert client.get("/export").status_code == 302
 
 
-# Socket.IO -------------------------------------------------------------------
-
-def test_socket_rejects_anonymous_connections(app):
-    socket = socketio.test_client(app, flask_test_client=app.test_client())
-    assert not socket.is_connected()
-
-
-def test_socket_relays_signals_between_logged_in_users(app, client):
-    sender = socketio.test_client(app, flask_test_client=client)
-    receiver = socketio.test_client(app, flask_test_client=client)
-    assert sender.is_connected() and receiver.is_connected()
-
-    sender.emit("join_room", {"room": "ABC123"})
-    receiver.emit("join_room", {"room": "ABC123"})
-    sender.get_received()
-    sender.emit("signal", {"room": "ABC123", "payload": {"type": "offer"}})
-    received = receiver.get_received()
-    assert [(m["name"], m["args"][0]) for m in received] == [("signal", {"type": "offer"})]
-
-
-def test_socket_ignores_invalid_rooms(app, client):
-    socket = socketio.test_client(app, flask_test_client=client)
-    socket.emit("join_room", {"room": "X" * 100})
-    socket.emit("join_room", "not-a-dict")
-    socket.emit("signal", {"room": 123, "payload": {}})
-    assert socket.is_connected()
-
-
 # Request and content limits --------------------------------------------------
 
 def test_oversized_request_is_rejected(app, client, monkeypatch):
     monkeypatch.setitem(app.config, "MAX_CONTENT_LENGTH", 1000)
-    response = client.post("/share/import", data="x" * 2000, content_type="application/json")
+    response = client.post("/api/sync", data="x" * 2000, content_type="application/json")
     assert response.status_code == 413
     response = client.post(
         "/import",
@@ -164,18 +135,6 @@ def test_oversized_request_is_rejected(app, client, monkeypatch):
         content_type="multipart/form-data",
     )
     assert response.status_code == 413
-
-
-@pytest.mark.parametrize("payload, error", [
-    ({"body": "x" * 50001}, "Stash body is too long"),
-    ({"body": "ok", "title": "t" * 201}, "Stash title is too long"),
-    ({"body": "ok", "tags": ["x" * 51]}, "Invalid tags"),
-    ({"body": "ok", "tags": "not-a-list"}, "Invalid tags"),
-])
-def test_share_import_enforces_limits(client, payload, error):
-    response = client.post("/share/import", json=payload)
-    assert response.status_code == 400
-    assert response.get_json() == {"error": error}
 
 
 def test_import_skips_oversized_stashes(client, user):
@@ -200,7 +159,9 @@ def test_security_headers_present(app):
     csp = response.headers["Content-Security-Policy"]
     assert "frame-ancestors 'none'" in csp
     assert "object-src 'none'" in csp
-    assert "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0]
+    script_src = csp.split("script-src")[1].split(";")[0]
+    assert "'unsafe-inline'" not in script_src
+    assert "http" not in script_src  # every script is self-hosted
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["X-Content-Type-Options"] == "nosniff"
 
