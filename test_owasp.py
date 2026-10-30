@@ -15,8 +15,8 @@ from app import create_app
 from config import ProductionConfig, TestingConfig
 from models import db, User, Stash
 from sockets import socketio, MAX_JOINS_PER_MINUTE
+from conftest import sign_in
 
-PASSWORD = "correct-horse-battery"
 
 
 @pytest.fixture
@@ -31,16 +31,13 @@ def app():
 
 def make_user(username):
     user = User(username=username, email=f"{username}@example.com", email_verified=True)
-    user.set_password(PASSWORD)
     db.session.add(user)
     db.session.commit()
     return user
 
 
 def logged_in_client(app, username):
-    client = app.test_client()
-    assert client.post("/login", data={"username": username, "password": PASSWORD}).status_code == 302
-    return client
+    return sign_in(app.test_client(), User.query.filter_by(username=username).first())
 
 
 @pytest.fixture
@@ -60,9 +57,7 @@ def bob_stash(app):
 # A01 Broken Access Control ---------------------------------------------------
 
 @pytest.mark.parametrize("method, path", [
-    ("get", "/stashes/{id}"),
     ("get", "/export/stash/{id}"),
-    ("get", "/share/{id}"),
     ("get", "/share/payload/{id}"),
     ("post", "/stashes/{id}/delete"),
     ("post", "/relay/start/{id}"),
@@ -71,6 +66,25 @@ def test_other_users_stash_is_not_found(app, alice, bob_stash, method, path):
     client = logged_in_client(app, "alice")
     response = getattr(client, method)(path.format(id=bob_stash.id))
     assert response.status_code == 404
+    assert db.session.get(Stash, bob_stash.id).body == "bob's secret"
+
+
+@pytest.mark.parametrize("path", ["/stashes/{id}", "/share/{id}"])
+def test_page_shells_never_contain_note_data(app, alice, bob_stash, path):
+    """Notes reach a page only through the owner's sync, never in server HTML."""
+    response = logged_in_client(app, "alice").get(path.format(id=bob_stash.id))
+    assert response.status_code == 200 and b"bob's secret" not in response.data
+
+
+def test_sync_never_returns_or_accepts_other_users_notes(app, alice, bob_stash):
+    import time
+    client = logged_in_client(app, "alice")
+    reply = client.post("/api/sync", json={"cursor": None, "changes": [
+        {"id": bob_stash.id, "text": "mine now", "tags": [], "updated_at": int(time.time() * 1000)},
+        {"id": bob_stash.id, "deleted": True, "updated_at": int(time.time() * 1000)},
+    ]}, headers={"Accept": "application/json"}).get_json()
+    assert [r["reason"] for r in reply["rejected"]] == ["not yours", "not yours"]
+    assert reply["stashes"] == [] and reply["deleted"] == []
     assert db.session.get(Stash, bob_stash.id).body == "bob's secret"
 
 
@@ -148,63 +162,72 @@ def test_export_filename_is_sanitised(app, alice):
 
 # A07 Authentication Failures ----------------------------------------------------
 
-@pytest.mark.parametrize("password, accepted", [
-    ("seven77", False),
-    ("x" * 129, False),
-    ("eight888", True),
-])
-def test_password_policy(app, password, accepted):
-    response = app.test_client().post("/signup", data={
-        "username": "newuser", "email": "new@example.com",
-        "password": password, "confirm_password": password,
-    })
-    assert (User.query.filter_by(username="newuser").first() is not None) == accepted
-    if not accepted:
-        assert b"between 8 and 128 characters" in response.data
+def _link(sent, email):
+    import re
+    body = [message for message in sent if message[0] == email][-1][2]
+    return re.search(r"https?://localhost(\S+)", body).group(1)
 
 
-def test_unknown_username_costs_a_password_hash(app, alice, monkeypatch):
-    """Unknown usernames must not answer faster (timing-based user enumeration)."""
-    calls = []
-    real_check = routes.check_password_hash
-    monkeypatch.setattr(routes, "check_password_hash",
-                        lambda pwhash, password: calls.append(1) or real_check(pwhash, password))
-    app.test_client().post("/login", data={"username": "no-such-user", "password": "whatever-1"})
-    assert calls == [1]
-
-
-def test_signup_does_not_reveal_registered_emails(app, alice, monkeypatch):
+@pytest.fixture
+def outbox(monkeypatch):
     sent = []
-    monkeypatch.setattr(routes, "send_email", lambda to, subject, body: sent.append((to, subject)))
-    response = app.test_client().post("/signup", data={
-        "username": "copycat", "email": "ALICE@example.com",
-        "password": PASSWORD, "confirm_password": PASSWORD,
-    }, follow_redirects=True)
-    # Same answer as a successful sign-up; no second account; the owner is told
-    assert b"Almost there. Check your email" in response.data
-    assert User.query.filter_by(username="copycat").first() is None
-    assert sent == [("alice@example.com", "Someone tried to sign up with your email")]
+    monkeypatch.setattr(routes, "send_email", lambda to, subject, body: sent.append((to, subject, body)))
+    return sent
 
 
-def test_login_is_limited_per_account_across_ips(monkeypatch, alice):
+def test_sign_in_does_not_reveal_who_has_an_account(app, alice, outbox):
+    client = app.test_client()
+    known = client.post("/login", data={"email": "ALICE@example.com"})
+    unknown = client.post("/login", data={"email": "nobody@example.com"})
+    assert known.status_code == unknown.status_code == 302
+    assert known.headers["Location"] == unknown.headers["Location"] == "/login/sent"
+    assert [to for to, _, _ in outbox] == ["alice@example.com", "nobody@example.com"]
+
+
+def test_email_scanners_do_not_use_up_links(app, alice, outbox):
+    """Opening (GET) a link only shows a button; signing in is a POST."""
+    client = app.test_client()
+    client.post("/login", data={"email": "alice@example.com"})
+    link = _link(outbox, "alice@example.com")
+    for _ in range(3):
+        assert b"Sign me in" in app.test_client().get(link).data
+    assert client.post(link).headers["Location"] == "/"
+
+
+def test_links_work_once(app, alice, outbox):
+    app.test_client().post("/login", data={"email": "alice@example.com"})
+    link = _link(outbox, "alice@example.com")
+    assert app.test_client().post(link).headers["Location"] == "/"
+    assert app.test_client().post(link).headers["Location"] == "/login"
+    # A sign-up link stops working once the account exists
+    app.test_client().post("/login", data={"email": "new@example.com"})
+    signup = _link(outbox, "new@example.com")
+    assert app.test_client().post(signup).headers["Location"] == "/"
+    assert app.test_client().post(signup).headers["Location"] == "/login"
+    assert User.query.filter_by(email="new@example.com").count() == 1
+
+
+def test_links_are_limited_per_address_across_ips(monkeypatch, outbox):
     monkeypatch.setattr(TestingConfig, "RATELIMIT_ENABLED", True, raising=False)
     app = create_app("testing")
     with app.app_context():
         db.create_all()
-        make_user("victim")
         statuses = [
-            app.test_client().post(
-                "/login", data={"username": "victim", "password": f"guess-{n}"},
-                environ_base={"REMOTE_ADDR": f"198.51.100.{n}"},
-            ).status_code
-            for n in range(21)
+            app.test_client().post("/login", data={"email": "victim@example.com"},
+                                   environ_base={"REMOTE_ADDR": f"198.51.100.{n}"}).status_code
+            for n in range(11)
         ]
-        assert statuses[:20] == [302] * 20 and statuses[20] == 429
-        # Other accounts are unaffected
-        other = app.test_client().post("/login", data={"username": "someone-else", "password": "x"},
+        assert statuses[:10] == [302] * 10 and statuses[10] == 429
+        other = app.test_client().post("/login", data={"email": "someone@example.com"},
                                        environ_base={"REMOTE_ADDR": "198.51.100.200"})
         assert other.status_code == 302
         db.drop_all()
+
+
+def test_old_password_routes_send_people_to_sign_in(app):
+    client = app.test_client()
+    for path in ["/signup", "/password/forgot", "/password/reset/abc", "/verify/abc", "/verify/resend"]:
+        assert client.get(path).headers["Location"] == "/login", path
 
 
 def test_viewing_login_page_does_not_count_against_limit(app):
@@ -213,18 +236,16 @@ def test_viewing_login_page_does_not_count_against_limit(app):
 
 # A09 Security Logging & Alerting Failures -------------------------------------
 
-def test_failed_login_is_logged(app, alice, caplog):
+def test_unusable_sign_in_links_are_logged(app, caplog):
     with caplog.at_level(logging.WARNING, logger="ruff.security"):
-        app.test_client().post("/login", data={"username": "alice", "password": "wrong-password"})
-    assert any("Failed login for username='alice'" in r.getMessage() for r in caplog.records)
-    assert not any(PASSWORD in r.getMessage() or "wrong-password" in r.getMessage() for r in caplog.records)
+        app.test_client().post("/auth/not-a-real-token")
+    assert any("Unusable sign-in link (invalid)" in r.getMessage() for r in caplog.records)
 
 
-def test_rate_limit_hits_are_logged(app, caplog):
+def test_rate_limit_hits_are_logged(app, outbox, caplog):
     with caplog.at_level(logging.WARNING, logger="ruff.security"):
         client = app.test_client()
-        statuses = [client.post("/login", data={"username": "x", "password": "y"}).status_code
-                    for _ in range(11)]
+        statuses = [client.post("/login", data={"email": f"x{n}@example.com"}).status_code for n in range(6)]
     assert statuses[-1] == 429
     assert any("Rate limit hit: POST /login" in r.getMessage() for r in caplog.records)
 
@@ -233,8 +254,8 @@ def test_production_never_logs_email_bodies(app, monkeypatch, caplog):
     monkeypatch.setitem(app.config, "SMTP_HOST", "")
     monkeypatch.setattr(app, "debug", False)
     with app.test_request_context(), caplog.at_level(logging.DEBUG):
-        auth_utils.send_email("alice@example.com", "Reset your Ruff password",
-                              "Reset your password: https://ruff.example/password/reset/SECRET-TOKEN")
+        auth_utils.send_email("alice@example.com", "Your Ruff sign-in link",
+                              "Tap to sign in: https://ruff.example/auth/SECRET-TOKEN")
     assert "SECRET-TOKEN" not in caplog.text
     assert "not sent" in caplog.text
 

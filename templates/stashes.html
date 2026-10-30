@@ -6,60 +6,28 @@
 {% block content %}
 <div class="page-head">
     <h1>Your stash</h1>
-    <p>Everything you've kept, newest first.</p>
+    <p>{% if g.user %}Everything you've kept, on all your devices.{% else %}Kept on this device. <a href="{{ url_for('main.login') }}">Sign in</a> to sync it everywhere.{% endif %}</p>
 </div>
 
-<form class="search" method="GET" action="{{ url_for('main.view_stashes') }}" role="search">
+<form class="search" id="search-form" role="search">
     <label for="search" class="sr-only">Search your stash</label>
-    <input id="search" class="input" type="search" name="q" value="{{ search_query or '' }}" placeholder="Search your stash">
-    {% if current_tag %}<input type="hidden" name="tag" value="{{ current_tag }}">{% endif %}
+    <input id="search" class="input" type="search" name="q" placeholder="Search your stash" autocomplete="off">
     <button type="submit" class="btn btn-quiet">Search</button>
 </form>
 
-{% if tags %}
-<nav class="chips" aria-label="Filter by tag">
-    <a class="chip" href="{{ url_for('main.view_stashes', q=search_query) }}" {% if not current_tag %}aria-current="true"{% endif %}>All</a>
-    {% for tag in tags %}
-    <a class="chip" href="{{ url_for('main.view_stashes', tag=tag.name, q=search_query) }}" {% if current_tag == tag.name %}aria-current="true"{% endif %}>#{{ tag.name }} <span class="sr-only">({{ tag.stash_count }})</span></a>
-    {% endfor %}
-</nav>
-{% endif %}
+<nav class="chips" id="tag-chips" aria-label="Filter by tag" hidden></nav>
 
-{% if stashes %}
-<ul class="stash-list">
-    {% for stash in stashes %}
-    <li>
-        <a class="stash-card" href="{{ url_for('main.view_stash', stash_id=stash.id) }}">
-            <span class="stash-card-title">{{ stash.title or "Untitled" }}</span>
-            {% if stash.preview and stash.preview != stash.title %}
-            <span class="stash-card-preview">{{ stash.preview }}</span>
-            {% endif %}
-            <span class="stash-card-meta">
-                <span>{{ stash.updated_ago }}</span>
-                {% if stash.checklist %}
-                <span>☑ {{ stash.checklist | selectattr('done') | list | length }}/{{ stash.checklist | length }} done</span>
-                {% endif %}
-                {% for tag in stash.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
-            </span>
-        </a>
-    </li>
-    {% endfor %}
-</ul>
-{% if has_more %}
-<div class="load-more">
-    <a class="btn btn-quiet" href="{{ url_for('main.view_stashes', page=page + 1, tag=current_tag, q=search_query) }}">Load more</a>
-</div>
-{% endif %}
-{% elif search_query or current_tag %}
-<div class="empty">
+<ul class="stash-list" id="stash-list"></ul>
+
+<div class="load-more"><button type="button" class="btn btn-quiet" id="load-more" hidden>Load more</button></div>
+
+<div class="empty" id="stash-nothing" hidden>
     <span class="hand">Nothing here.</span>
-    <p>No stash matches that. <a href="{{ url_for('main.view_stashes') }}">Show everything</a></p>
+    <p>No stash matches that.</p>
 </div>
-{% else %}
-<div class="empty">
+<div class="empty" id="stash-empty" hidden>
     <span class="hand">Your stash is empty.</span>
     <p>Write something on the sheet and tap <strong>Stash it</strong>.</p>
     <a class="btn" href="{{ url_for('main.index') }}">Start writing</a>
 </div>
-{% endif %}
 {% endblock %}

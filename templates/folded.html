@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}A folded note · {{ app_name }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="auth">
+    {% if waiting %}
+    <div id="unfold-closed">
+        <h1>Someone passed you a note</h1>
+        <div class="card folded">
+            <p>It opens <strong>once</strong>: after you read it, it's gone for good. Ready?</p>
+            <button type="button" class="btn btn-block" id="unfold">Unfold it</button>
+            <p class="share-status" id="unfold-status" aria-live="polite"></p>
+        </div>
+    </div>
+    <div id="unfold-open" hidden>
+        <h1 class="hand">The note says…</h1>
+        <div class="card tape">
+            <p id="unfold-text" class="folded-text"></p>
+        </div>
+        <div class="sheet-actions">
+            <button type="button" class="btn" id="unfold-keep">Keep it in my stash</button>
+            <a class="btn btn-quiet" href="{{ url_for('main.index') }}">Write one back</a>
+        </div>
+        <p class="muted">This note has been opened, so the link no longer works.</p>
+    </div>
+    {% else %}
+    <h1>Already unfolded</h1>
+    <div class="card">
+        <p>Someone already opened this note, or it expired. Folded notes open only once.</p>
+        <a class="btn" href="{{ url_for('main.index') }}">Write your own</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

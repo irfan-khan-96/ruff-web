@@ -11,12 +11,12 @@ import pytest
 from flask.sessions import SecureCookieSessionInterface
 
 from app import create_app
-from auth_utils import generate_token, verify_token
+from auth_utils import login_link_token, read_link_token, signup_link_token
+from conftest import sign_in
 from config import ProductionConfig, TestingConfig, DEV_SECRET_KEY, DEV_PASSWORD_SALT
 from models import db, User
 from sockets import socketio
 
-PASSWORD = "correct-horse-battery"
 
 
 @pytest.fixture
@@ -32,7 +32,6 @@ def app():
 @pytest.fixture
 def user(app):
     user = User(username="alice", email="alice@example.com", email_verified=True)
-    user.set_password(PASSWORD)
     db.session.add(user)
     db.session.commit()
     return user
@@ -40,11 +39,8 @@ def user(app):
 
 @pytest.fixture
 def client(app, user):
-    """A test client logged in as `user`."""
-    client = app.test_client()
-    response = client.post("/login", data={"username": "alice", "password": PASSWORD})
-    assert response.status_code == 302
-    return client
+    """A test client signed in as `user`."""
+    return sign_in(app.test_client(), user)
 
 
 def _token_payload(token: str) -> dict:
@@ -77,49 +73,55 @@ def test_production_starts_with_real_secrets(monkeypatch):
 
 # Tokens ----------------------------------------------------------------------
 
-def test_token_does_not_contain_password_hash(app, user):
+def test_link_tokens_carry_no_secrets_about_the_account(app, user):
+    """Signed, not encrypted: anyone can read them, so they hold only ids and a nonce."""
     with app.test_request_context():
-        token = generate_token(user, "password_reset")
-    assert user.password_hash not in json.dumps(_token_payload(token))
+        token = login_link_token(user)
+    payload = _token_payload(token)
+    assert set(payload) == {"purpose", "uid", "nonce"} and payload["uid"] == user.id
+    assert payload["nonce"] == user.login_nonce
 
 
-def test_token_invalid_after_password_change(app, user):
+def test_link_tokens_are_signed_and_expire(app, user):
     with app.test_request_context():
-        token = generate_token(user, "password_reset")
-        assert verify_token(token, "password_reset", 3600) == (user, None)
-        user.set_password("a-new-password")
-        db.session.commit()
-        assert verify_token(token, "password_reset", 3600) == (None, "invalid")
+        token = login_link_token(user)
+        assert read_link_token(token, 900)[1] is None
+        assert read_link_token(token[:-2] + "xx", 900) == (None, "invalid")
+        assert read_link_token(signup_link_token("a@example.com") + "x", 900) == (None, "invalid")
+        assert read_link_token(token, -1) == (None, "expired")
 
 
-def test_token_purpose_is_checked(app, user):
+def test_a_new_link_replaces_the_previous_one(app, user):
     with app.test_request_context():
-        token = generate_token(user, "email_verify")
-        assert verify_token(token, "password_reset", 3600) == (None, "invalid")
+        first = login_link_token(user)
+        second = login_link_token(user)
+    db.session.commit()
+    client = app.test_client()
+    assert client.post(f"/auth/{first}").headers["Location"].endswith("/login")
+    assert client.post(f"/auth/{second}").headers["Location"].endswith("/")
 
 
 # Sessions --------------------------------------------------------------------
 
-def test_password_change_logs_out_existing_sessions(client, user):
-    assert client.get("/stashes").status_code == 200
-    user.set_password("a-new-password")
-    db.session.commit()
-    response = client.get("/stashes")
-    assert response.status_code == 302
-    assert "/login" in response.headers["Location"]
+def test_sign_out_everywhere_ends_every_session(app, user):
+    phone, laptop = sign_in(app.test_client(), user), sign_in(app.test_client(), user)
+    assert phone.get("/export").status_code == 200 and laptop.get("/export").status_code == 200
+    assert phone.post("/logout/everywhere").status_code == 302
+    assert laptop.get("/export").status_code == 302  # sent to sign in
+    assert phone.get("/export").status_code == 302
 
 
 def test_forged_cookie_without_fingerprint_is_rejected(app, user):
     serializer = SecureCookieSessionInterface().get_signing_serializer(app)
     client = app.test_client()
     client.set_cookie("session", serializer.dumps({"user_id": user.id}))
-    assert client.get("/stashes").status_code == 302
+    assert client.get("/export").status_code == 302
 
 
 def test_logout_requires_post(client):
     assert client.get("/logout").status_code == 405
     assert client.post("/logout").status_code == 302
-    assert client.get("/stashes").status_code == 302
+    assert client.get("/export").status_code == 302
 
 
 # Socket.IO -------------------------------------------------------------------

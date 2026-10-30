@@ -17,8 +17,23 @@
     let dataChannel = null;
     let isSender = false;
     let payloadCache = null;
-    syncPicker();
     picker?.addEventListener("change", syncPicker);
+    // Fill the picker from this device's notes
+    (async () => {
+        if (!picker || !window.RuffStore) return;
+        await window.RuffStore.ready;
+        const notes = await window.RuffStore.list();
+        for (const note of notes) {
+            const option = new Option(window.RuffStore.firstLine(note.text) || "Untitled", note.id);
+            option.selected = note.id === picker.dataset.selected;
+            picker.append(option);
+        }
+        const none = document.getElementById("share-none");
+        if (none) none.hidden = notes.length > 0;
+        picker.hidden = notes.length === 0;
+        if (startBtn) startBtn.disabled = notes.length === 0;
+        syncPicker();
+    })();
 
     function setShareStatus(text) {
         if (shareStatus) shareStatus.textContent = text;
@@ -85,15 +100,17 @@
         };
     }
 
+    // Notes live on the device (local-first): read the one picked to send
     async function fetchPayload() {
         if (!config.payloadUrl) {
             throw new Error("No stash selected for sharing.");
         }
-        const res = await fetch(config.payloadUrl);
-        if (!res.ok) {
-            throw new Error("Failed to load stash payload.");
+        await window.RuffStore.ready;
+        const note = await window.RuffStore.get(config.payloadUrl);
+        if (!note) {
+            throw new Error("That note isn't on this device.");
         }
-        return res.json();
+        return { id: note.id, title: window.RuffStore.firstLine(note.text), body: note.text, tags: note.tags || [] };
     }
 
     async function sendPayload() {
@@ -109,19 +126,18 @@
         }
     }
 
+    // A received note becomes a new note on this device (then syncs)
     async function importPayload(payload) {
-        const res = await fetch(config.importUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": config.csrfToken
-            },
-            body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
+        const body = String(payload.body || "");
+        const title = String(payload.title || "").trim();
+        const text = title && window.RuffStore.firstLine(body) !== title ? `${title}\n\n${body}` : body;
+        if (!text.trim() || text.length > 50000) {
             throw new Error("Import failed");
         }
-        return res.json();
+        const tags = (Array.isArray(payload.tags) ? payload.tags : []).map((t) => String(t).trim().toLowerCase()).filter((t) => t && t.length <= 50).slice(0, 20);
+        const note = await window.RuffStore.save({ text, tags });
+        await window.RuffStore.sync();
+        return note;
     }
 
     if (!socket) {

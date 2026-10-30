@@ -110,7 +110,7 @@ def _private_pages(seeded):
 def test_controls_have_readable_text(live_server, new_page, seeded, theme):
     page = _themed_page(new_page, theme)
     failures = {}
-    for path in ["/", "/login", "/signup", "/password/forgot", "/verify/resend", "/pass"]:
+    for path in ["/", "/stashes", "/login", "/login/sent", "/lounge", "/pass"]:
         page.goto(live_server.url + path)
         _settle(page)
         failures[f"anon {path}"] = _low_contrast(page)

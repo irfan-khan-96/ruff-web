@@ -1,122 +1,49 @@
 """
-Flask-WTF forms for the Ruff application.
+Flask-WTF forms. Sign-in is passwordless: just an email address.
 """
 
+import re
+
 from flask_wtf import FlaskForm
-from wtforms import SubmitField, StringField, PasswordField, BooleanField
-from wtforms.validators import DataRequired, Length, ValidationError, Email, EqualTo
+from wtforms import StringField
+from wtforms.validators import DataRequired, Email, Length, ValidationError
+
 from models import User
 
-# Password policy for new passwords (sign-up and reset)
-PASSWORD_MIN_LENGTH = 8
-PASSWORD_MAX_LENGTH = 128
-PASSWORD_LENGTH_MESSAGE = (
-    f"Password must be between {PASSWORD_MIN_LENGTH} and {PASSWORD_MAX_LENGTH} characters."
-)
+NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
-class LoginForm(FlaskForm):
-    """Form for user login."""
+class EmailForm(FlaskForm):
+    """Sign in, or sign up: we email a link either way."""
 
-    username = StringField(
-        "Username",
-        validators=[DataRequired(message="Username is required.")]
-    )
-    password = PasswordField(
-        "Password",
-        validators=[
-            DataRequired(message="Password is required."),
-            # No minimum here (older accounts may predate the policy), only the cap
-            Length(max=PASSWORD_MAX_LENGTH, message=PASSWORD_LENGTH_MESSAGE),
-        ]
-    )
-    remember = BooleanField("Remember me")
-    submit = SubmitField("Login")
-
-
-class SignupForm(FlaskForm):
-    """Form for user registration."""
-
-    username = StringField(
-        "Username",
-        validators=[
-            DataRequired(message="Username is required."),
-            Length(min=3, max=80, message="Username must be between 3 and 80 characters.")
-        ]
-    )
     email = StringField(
         "Email",
         validators=[
-            DataRequired(message="Email is required."),
-            Email(message="Invalid email address.")
-        ]
+            DataRequired(message="Type your email address."),
+            Email(message="That doesn't look like an email address."),
+            Length(max=120),
+        ],
     )
-    password = PasswordField(
-        "Password",
+
+
+class NameForm(FlaskForm):
+    """The name shown on relay lines and in the Lounge."""
+
+    username = StringField(
+        "Your name",
         validators=[
-            DataRequired(message="Password is required."),
-            Length(min=PASSWORD_MIN_LENGTH, max=PASSWORD_MAX_LENGTH, message=PASSWORD_LENGTH_MESSAGE)
-        ]
+            DataRequired(message="Pick a name."),
+            Length(min=3, max=30, message="Between 3 and 30 characters."),
+        ],
     )
-    confirm_password = PasswordField(
-        "Confirm Password",
-        validators=[
-            DataRequired(message="Please confirm your password."),
-            EqualTo("password", message="Passwords must match.")
-        ]
-    )
-    submit = SubmitField("Sign Up")
-    
+
+    def __init__(self, *args, current_user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_user = current_user
+
     def validate_username(self, field):
-        """Check if username is already taken."""
-        if User.query.filter_by(username=field.data).first():
-            raise ValidationError("Username already exists.")
-    
-    # No "email already registered" validator: it would reveal who has an
-    # account. The signup route handles existing emails without saying so.
-
-
-class ResendVerificationForm(FlaskForm):
-    """Form to resend email verification."""
-
-    email = StringField(
-        "Email",
-        validators=[
-            DataRequired(message="Email is required."),
-            Email(message="Invalid email address.")
-        ]
-    )
-    submit = SubmitField("Resend Verification Email")
-
-
-class ForgotPasswordForm(FlaskForm):
-    """Form to request a password reset."""
-
-    email = StringField(
-        "Email",
-        validators=[
-            DataRequired(message="Email is required."),
-            Email(message="Invalid email address.")
-        ]
-    )
-    submit = SubmitField("Send Reset Link")
-
-
-class ResetPasswordForm(FlaskForm):
-    """Form to reset password."""
-
-    password = PasswordField(
-        "New Password",
-        validators=[
-            DataRequired(message="Password is required."),
-            Length(min=PASSWORD_MIN_LENGTH, max=PASSWORD_MAX_LENGTH, message=PASSWORD_LENGTH_MESSAGE)
-        ]
-    )
-    confirm_password = PasswordField(
-        "Confirm Password",
-        validators=[
-            DataRequired(message="Please confirm your password."),
-            EqualTo("password", message="Passwords must match.")
-        ]
-    )
-    submit = SubmitField("Reset Password")
+        if not NAME_RE.match(field.data or ""):
+            raise ValidationError("Letters, numbers, dots, dashes and underscores only.")
+        taken = User.query.filter(User.username == field.data).first()
+        if taken and taken is not self.current_user:
+            raise ValidationError("That name's taken.")

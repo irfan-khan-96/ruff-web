@@ -1,22 +1,17 @@
 {% extends "base.html" %}
 {% from "_form.html" import field %}
 
-{% block title %}Log in · {{ app_name }}{% endblock %}
+{% block title %}Sign in · {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="auth">
-    <h1>Log in</h1>
-    <p class="lede">Welcome back. Your stash is right where you left it.</p>
+    <h1>Sign in</h1>
+    <p class="lede">No passwords. We'll email you a link: new here or coming back, it's the same.</p>
     <form method="POST" class="card tape" novalidate>
         {{ form.hidden_tag() }}
-        {{ field(form.username, autocomplete="username") }}
-        {{ field(form.password, autocomplete="current-password") }}
-        <div class="field"><label class="check">{{ form.remember() }} Keep me logged in</label></div>
-        <button type="submit" id="submit" class="btn btn-block">Log in</button>
+        {{ field(form.email, autocomplete="email", type="email") }}
+        <button type="submit" id="submit" class="btn btn-block">Email me a link</button>
     </form>
-    <p class="auth-links">
-        New here? <a href="{{ url_for('main.signup') }}">Sign up</a><br>
-        <a href="{{ url_for('main.forgot_password') }}">Forgot your password?</a> · <a href="{{ url_for('main.resend_verification') }}">Resend verification</a>
-    </p>
+    <p class="auth-links">You can write without an account. Notes stay on this device until you sign in.</p>
 </div>
 {% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in · {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="auth">
+    <h1>{{ "Start your notebook" if new else "Sign in" }}</h1>
+    <form method="POST" class="card tape">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p>{{ "Create a notebook for" if new else "Sign in as" }} <strong>{{ email }}</strong>?</p>
+        <button type="submit" id="submit" class="btn btn-block">{{ "Create my notebook" if new else "Sign me in" }}</button>
+    </form>
+    <p class="auth-links">Not you? Just close this page.</p>
+</div>
+{% endblock %}

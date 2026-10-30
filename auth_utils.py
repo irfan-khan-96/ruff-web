@@ -1,11 +1,12 @@
 """
-Authentication helpers: token generation and email sending.
+Authentication helpers: passwordless sign-in links, sessions, and email.
 """
 
 from typing import Optional, Tuple
 import hashlib
 import hmac
 import logging
+import secrets
 import smtplib
 from email.message import EmailMessage
 
@@ -24,19 +25,24 @@ def _serializer() -> URLSafeTimedSerializer:
     )
 
 
-def password_fingerprint(user: User) -> str:
+def session_fingerprint(user: User) -> str:
     """
-    Keyed digest of the user's password hash.
-
-    Changes whenever the password changes, so it can invalidate tokens and
-    sessions, without exposing the hash itself (token payloads are signed,
-    not encrypted, and sessions are client-side cookies).
+    Keyed digest of the user's session epoch. "Sign out everywhere" bumps the
+    epoch, which invalidates every existing session cookie at once.
     """
     return hmac.new(
         current_app.config["SECRET_KEY"].encode(),
-        user.password_hash.encode(),
+        f"session:{user.id}:{user.session_epoch or 0}".encode(),
         hashlib.sha256,
     ).hexdigest()
+
+
+def start_session(session, user: User) -> None:
+    """Log a user in (fresh session: no fixation)."""
+    session.clear()
+    session["user_id"] = user.id
+    session["epoch"] = session_fingerprint(user)
+    session.permanent = True
 
 
 def load_session_user(session) -> Optional[User]:
@@ -44,55 +50,46 @@ def load_session_user(session) -> Optional[User]:
     Return the logged-in user for a Flask session, or None.
 
     Clears the session when it no longer identifies a valid user: the account
-    was deleted, still needs email verification, or the password changed
-    since login.
+    was deleted, or the user signed out everywhere since this session began.
     """
     user_id = session.get("user_id")
     if user_id is None:
         return None
 
     user = db.session.get(User, user_id)
-    if (
-        user is None
-        or (
-            current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True)
-            and not user.email_verified
-        )
-        or not hmac.compare_digest(str(session.get("pw", "")), password_fingerprint(user))
-    ):
+    if user is None or not hmac.compare_digest(str(session.get("epoch", "")), session_fingerprint(user)):
         session.clear()
         return None
     return user
 
 
-def generate_token(user: User, purpose: str) -> str:
-    payload = {
-        "user_id": user.id,
-        "purpose": purpose,
-        "pw": password_fingerprint(user),
-    }
-    return _serializer().dumps(payload)
+# Email sign-in links -----------------------------------------------------------
+# Two kinds: "login" for an existing account (carries the account's single-use
+# login_nonce) and "signup" for an email with no account yet (single use
+# because the account exists once it has been used).
+
+def login_link_token(user: User) -> str:
+    """A sign-in token for an existing account; replaces any earlier link."""
+    user.login_nonce = secrets.token_urlsafe(24)
+    return _serializer().dumps({"purpose": "login", "uid": user.id, "nonce": user.login_nonce})
 
 
-def verify_token(token: str, purpose: str, max_age: int) -> Tuple[Optional[User], Optional[str]]:
+def signup_link_token(email: str) -> str:
+    """A token that creates the account for `email` when used."""
+    return _serializer().dumps({"purpose": "signup", "email": email})
+
+
+def read_link_token(token: str, max_age: int) -> Tuple[Optional[dict], Optional[str]]:
+    """Signed, unexpired token payload, or (None, "expired" | "invalid")."""
     try:
         data = _serializer().loads(token, max_age=max_age)
     except SignatureExpired:
         return None, "expired"
     except BadSignature:
         return None, "invalid"
-
-    if data.get("purpose") != purpose:
+    if not isinstance(data, dict) or data.get("purpose") not in ("login", "signup"):
         return None, "invalid"
-
-    user = db.session.get(User, data.get("user_id"))
-    if user is None:
-        return None, "invalid"
-
-    if not hmac.compare_digest(str(data.get("pw", "")), password_fingerprint(user)):
-        return None, "invalid"
-
-    return user, None
+    return data, None
 
 
 def send_email(recipient: str, subject: str, body: str) -> None:
@@ -103,8 +100,8 @@ def send_email(recipient: str, subject: str, body: str) -> None:
     from_addr = current_app.config.get("SMTP_FROM")
 
     if not host or not from_addr:
-        if current_app.debug:
-            # Development convenience: the verification/reset link appears in the log
+        if current_app.debug or current_app.config.get("MAIL_TO_LOG"):
+            # Development / local stacks: the sign-in link appears in the log
             logger.warning("SMTP not configured. Email to %s | %s | %s", recipient, subject, body)
         else:
             # Never log the body in production: it contains live account tokens

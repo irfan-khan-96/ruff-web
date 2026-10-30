@@ -38,16 +38,19 @@ class Config:
     DEBUG = os.getenv("FLASK_ENV", "production") == "development"
     
     # Session Settings
-    PERMANENT_SESSION_LIFETIME = timedelta(days=7)
+    # Passwordless: stay signed in for 30 days of inactivity (renewed on each visit)
+    PERMANENT_SESSION_LIFETIME = timedelta(days=int(os.getenv("SESSION_DAYS", "30")))
     SESSION_REFRESH_EACH_REQUEST = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "0") == "1"
 
-    # Auth Tokens
-    EMAIL_VERIFY_TOKEN_EXP = int(os.getenv("EMAIL_VERIFY_TOKEN_EXP", "86400"))  # 24h
-    PASSWORD_RESET_TOKEN_EXP = int(os.getenv("PASSWORD_RESET_TOKEN_EXP", "3600"))  # 1h
-    REQUIRE_EMAIL_VERIFICATION = os.getenv("REQUIRE_EMAIL_VERIFICATION", "1") == "1"
+    # Local stacks without SMTP: print outgoing email (sign-in links) to the
+    # log. Never enable in production: logs would hold live sign-in links.
+    MAIL_TO_LOG = os.getenv("MAIL_TO_LOG", "0") == "1"
+
+    # Folded notes expire unopened after this many days
+    FOLD_TTL_DAYS = int(os.getenv("FOLD_TTL_DAYS", "7"))
 
     # SMTP Email
     SMTP_HOST = os.getenv("SMTP_HOST", "")

@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from uuid import uuid4
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
 
 from utils import compose_sheet, roster_items, sheet_preview, sheet_title, time_ago, utcnow
 
@@ -22,7 +21,12 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), nullable=False, unique=True, index=True)
     email = db.Column(db.String(120), nullable=False, unique=True, index=True)
-    password_hash = db.Column(db.String(255), nullable=False)
+    # Unused since sign-in became passwordless (email links); kept for old rows
+    password_hash = db.Column(db.String(255), nullable=True)
+    # Single-use secret in the current sign-in link (rotated on request and use)
+    login_nonce = db.Column(db.String(64), nullable=True)
+    # Bumped by "sign out everywhere"; sessions carry a fingerprint of it
+    session_epoch = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
     email_verified_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
@@ -34,14 +38,6 @@ class User(db.Model):
     def __repr__(self) -> str:
         """String representation of User."""
         return f'<User {self.username}>'
-    
-    def set_password(self, password: str) -> None:
-        """Hash and set the user password."""
-        self.password_hash = generate_password_hash(password)
-    
-    def check_password(self, password: str) -> bool:
-        """Verify the user password."""
-        return check_password_hash(self.password_hash, password)
     
     def to_dict(self) -> dict:
         """Convert user to dictionary."""
@@ -110,6 +106,10 @@ class Stash(db.Model):
     preview = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    # Server time of the last write: the cursor for syncing devices
+    synced_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (db.Index("ix_stashes_user_synced", "user_id", "synced_at"),)
 
     def __init__(self, body: str, title: Optional[str] = None, checklist=None, **kwargs) -> None:
         """Create from sheet text, or from old-style title/body/checklist parts."""
@@ -277,3 +277,38 @@ class RelayEntry(db.Model):
             "position": self.position,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S"),
         }
+
+
+class StashTombstone(db.Model):
+    """A deleted stash, so the deletion reaches the user's other devices."""
+
+    __tablename__ = "stash_tombstones"
+
+    stash_id = db.Column(db.String(36), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    deleted_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (db.Index("ix_stash_tombstones_user_deleted", "user_id", "deleted_at"),)
+
+
+class FoldedNote(db.Model):
+    """
+    A note passed by link that opens once. Encrypted in the sender's browser;
+    the key lives only in the link's #fragment, so the server stores (and can
+    read) nothing but ciphertext. The row is deleted when opened.
+    """
+
+    __tablename__ = "folded_notes"
+
+    id = db.Column(db.String(32), primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    ciphertext = db.Column(db.Text, nullable=False)
+    iv = db.Column(db.String(32), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+
+    @classmethod
+    def purge_expired(cls) -> int:
+        count = cls.query.filter(cls.expires_at < utcnow()).delete(synchronize_session=False)
+        db.session.commit()
+        return count

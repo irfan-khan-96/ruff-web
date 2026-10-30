@@ -17,7 +17,6 @@ try:
 except ImportError:  # pragma: no cover - depends on the environment
     sync_api = None
 
-PASSWORD = "correct-horse-battery"
 
 
 class LiveServer:
@@ -28,16 +27,22 @@ class LiveServer:
         self.url = url
         self.outbox = outbox
 
-    def create_user(self, prefix="user", verified=True):
-        """Create a user with PASSWORD and return its (unique) username."""
+    def create_user(self, prefix="user"):
+        """Create a user (email <username>@example.com) and return its unique username."""
         from models import db, User
         username = f"{prefix}{uuid.uuid4().hex[:6]}"
         with self.app.app_context():
-            user = User(username=username, email=f"{username}@example.com", email_verified=verified)
-            user.set_password(PASSWORD)
-            db.session.add(user)
+            db.session.add(User(username=username, email=f"{username}@example.com", email_verified=True))
             db.session.commit()
         return username
+
+    def link_for(self, email):
+        """The most recent sign-in link emailed to `email`."""
+        import re
+        for message in reversed(self.outbox):
+            if message["to"] == email:
+                return re.search(r"https?://\S+", message["body"]).group(0)
+        raise AssertionError(f"no email to {email}")
 
     def query(self, fn):
         """Run fn() inside an app context (for checking database state)."""
@@ -135,9 +140,24 @@ def new_page(browser):
     assert csp_errors == [], f"CSP blocked resources: {csp_errors}"
 
 
-def login(page, server, username, password=PASSWORD):
+def login(page, server, username):
+    """Sign in the passwordless way: request a link, open it, confirm."""
+    email = f"{username}@example.com"
     page.goto(f"{server.url}/login")
-    page.fill("#username", username)
-    page.fill("#password", password)
+    page.fill("#email", email)
+    page.click("#submit")
+    page.wait_for_url(f"{server.url}/login/sent")
+    page.goto(server.link_for(email))
     page.click("#submit")
     page.wait_for_url(f"{server.url}/")
+    page.wait_for_function("window.RuffStore && true")
+
+
+def sign_in(client, user):
+    """Unit tests: give a Flask test client a signed-in session for `user`."""
+    from auth_utils import session_fingerprint
+    with client.session_transaction() as sess:
+        sess["user_id"] = user.id
+        sess["epoch"] = session_fingerprint(user)
+        sess.permanent = True
+    return client

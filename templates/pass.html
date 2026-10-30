@@ -8,8 +8,13 @@
     <p>Write a story together, or hand a stash to someone nearby.</p>
 </div>
 
+<section class="card pass-card folded pass-intro" aria-labelledby="fold-info-title">
+    <h2 id="fold-info-title">Folded notes</h2>
+    <p>Fold a note into a link that opens <strong>once</strong>, then disappears. It's locked in your browser before it leaves, so nobody in between (us included) can read it. Open any stash and tap <strong>Fold &amp; pass</strong>.</p>
+</section>
+
 <div class="pass-grid">
-    <section class="card pass-card folded" aria-labelledby="relay-title">
+    <section class="card pass-card" aria-labelledby="relay-title">
         <h2 id="relay-title">Recess Relay</h2>
         <p>One line each, passed around until the story's done.</p>
 
@@ -56,21 +61,12 @@
         {% if g.user %}
         <div class="field">
             <label for="share-stash">Send</label>
-            {% if recent %}
-            <select id="share-stash" class="input">
-                {% for item in recent %}
-                <option value="{{ url_for('main.share_payload', stash_id=item.id) }}" {% if stash and item.id == stash.id %}selected{% endif %}>{{ item.title or "Untitled" }}</option>
-                {% endfor %}
-            </select>
-            {% else %}
-            <p class="muted">Stash something first, then send it here.</p>
-            {% endif %}
+            <select id="share-stash" class="input" data-selected="{{ stash_id or '' }}"></select>
+            <p class="muted" id="share-none" hidden>Stash something first, then send it here.</p>
         </div>
-        {% if recent %}
         <button id="start-share" class="btn">Get a code</button>
         <div id="share-code" class="share-code" aria-live="polite">Code: —</div>
         <p id="share-status" class="share-status">Ready when you are.</p>
-        {% endif %}
 
         <div class="pass-split">
             <div class="field">
@@ -83,7 +79,7 @@
             <p id="receive-status" class="share-status">Not connected.</p>
         </div>
         {% else %}
-        <p><a href="{{ url_for('main.login') }}">Log in</a> to send or receive stashes.</p>
+        <p><a href="{{ url_for('main.login') }}">Sign in</a> to send or receive stashes.</p>
         {% endif %}
     </section>
 </div>
@@ -95,12 +91,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"
         integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO"
         crossorigin="anonymous"></script>
-<script nonce="{{ csp_nonce() }}">
-    window.RUFF_SHARE = {
-        csrfToken: "{{ csrf_token() }}",
-        importUrl: {{ url_for('main.import_shared_stash') | tojson }}
-    };
-</script>
 <script src="{{ url_for('static', filename='share.js') }}"></script>
 {% endif %}
 {% endblock %}

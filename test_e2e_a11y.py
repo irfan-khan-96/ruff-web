@@ -50,7 +50,7 @@ def _violations(page, url):
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_pages_have_no_accessibility_violations(live_server, new_page, seeded, theme):
     stash_id = seeded["stash_id"]
-    public = ["/", "/login", "/signup", "/password/forgot", "/verify/resend", "/pass", "/relay/A11Y01",
+    public = ["/", "/stashes", "/login", "/login/sent", "/lounge", "/pass", "/relay/A11Y01", "/f/AAAAAAAAAAAAAAAAAAAAAA",
               "/no-such-page"]
     private = ["/", "/stashes", "/stashes?q=nothing-matches", f"/stashes/{stash_id}", "/pass",
                f"/share/{stash_id}", "/lounge", "/relay/A11Y01"]

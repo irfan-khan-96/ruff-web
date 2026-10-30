@@ -28,8 +28,8 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - The only third-party resource is the Socket.IO client on the Pass page, loaded from cdnjs with Subresource Integrity. Fonts are self-hosted.
 
 ### A04 Cryptographic Failures
-- Passwords are hashed with scrypt (Werkzeug).
-- Email verification and password reset links are HMAC-signed, time-limited (24 h / 1 h) and become invalid when the password changes; they carry a keyed fingerprint of the password hash, never the hash itself.
+- No passwords are stored or accepted. Sign-in links are HMAC-signed, expire after 15 minutes, and are single-use (a per-account nonce, rotated on every request and on use).
+- Folded notes are encrypted in the sender's browser (AES-GCM, 256-bit). The key travels only in the link's `#fragment`, which browsers never send to servers, so the server stores and serves ciphertext it cannot read. The note is deleted in the same statement that hands it over.
 - Random values (relay codes, share codes, CSP nonces) come from cryptographically secure generators.
 
 ### A05 Injection
@@ -43,10 +43,10 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - Expired Recess Relay sessions are deleted after `RELAY_RETENTION_DAYS`.
 
 ### A07 Authentication Failures
-- Password policy: 8–128 characters for new passwords.
-- Login, password reset, resend-verification and sign-up responses don't reveal whether an account or email exists; sign-up with a registered email tells the real owner by email instead. Unknown usernames take as long as wrong passwords (no timing leak).
-- Sessions are renewed on login (no fixation) and invalidated everywhere when the password changes.
-- Email verification required before login (configurable).
+- Passwordless sign-in removes password guessing, reuse, stuffing and reset attacks.
+- Requesting a link gives the same answer whether or not the address has an account (no enumeration). Links are limited to 5 a minute per IP and 10 an hour per address.
+- Opening a link only shows a confirmation button; signing in is a separate POST, so email scanners that pre-open links can't use them up.
+- Sessions are renewed on sign-in (no fixation); "Sign out everywhere" invalidates every session at once.
 
 ### A08 Software or Data Integrity Failures
 - Subresource Integrity on the CDN script; SHA-pinned CI actions.
@@ -54,9 +54,9 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - The service worker caches only same-origin static files, never pages with user data.
 
 ### A09 Security Logging and Alerting Failures
-- Security events are logged to the `ruff.security` logger: failed logins (username and IP, never passwords), rate-limit hits, password reset requests, invalid reset links, completed resets.
+- Security events are logged to the `ruff.security` logger: sign-in link requests, unusable (expired, reused or forged) links, sign-ins, sign-outs everywhere, folded notes opened, and rate-limit hits.
 - Logs go to stdout as JSON, one event per line with its request ID; nothing is written to local files.
-- Email bodies (which contain account tokens) are never logged in production.
+- Email bodies (which contain sign-in links) are never logged in production; `MAIL_TO_LOG` exists only for local stacks without SMTP.
 - Unhandled errors are reported to Sentry when `SENTRY_DSN` is set (no personal data sent).
 
 ### A10 Mishandling of Exceptional Conditions
@@ -68,12 +68,14 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 
 | Area | Status |
 |---|---|
-| Old database file in git history | **Action required:** commits before `8681958` contain a SQLite database with two accounts' emails and password hashes. Remove it from history (`git filter-repo`, then force-push) and have those accounts change their passwords. |
+| Old database file in git history | **Action required:** commits before `8681958` contain a SQLite database with two accounts' emails and password hashes. Remove it from history (`git filter-repo`, then force-push). Passwords are no longer used here, so the hashes can't sign anyone in, but those two people should change that password anywhere else they reused it. |
 | Deployment settings | **Action required:** set strong `SECRET_KEY` / `SECURITY_PASSWORD_SALT`, serve over HTTPS (or set `SESSION_COOKIE_SECURE=0`), and `PROXY_FIX_COUNT` when behind a proxy. |
-| Username enumeration at sign-up | Accepted: "username already exists" is shown, as usernames are already visible in Recess Relay. |
-| Multi-factor authentication | Not implemented. |
+| Multi-factor authentication | Not implemented; sign-in strength equals the email account's. Passkeys would be the next step. |
 | `style-src 'unsafe-inline'` in the CSP | Accepted: templates use inline styles; scripts remain strictly nonce-based. |
 | Rate-limit and share-join counters | Kept per process; with more than one process or host, set `RATELIMIT_STORAGE_URL=redis://...` (share-join throttling stays per process). |
 | Backups | SQLite on the Docker volume is not backed up automatically; back up `/app/data` or use Postgres. |
 | Account self-service | Changing email or deleting an account isn't available yet. |
 | Recess Relay | By design, anyone with a relay code can read it and add lines (rate-limited); don't put private information in a relay. |
+| Notes on the device | Local-first: notes are stored in the browser (IndexedDB) and readable by anyone using that browser profile. Signing out syncs, then clears them from the device. |
+| Folded notes | Anyone holding the full link can open the note once; share links privately. Unopened notes expire after `FOLD_TTL_DAYS` (default 7). |
+| Email account | Whoever controls your inbox can sign in; that's the trade-off of passwordless links. |

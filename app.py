@@ -114,6 +114,14 @@ def create_app(config_name: str = None) -> Flask:
         count = RelaySession.purge_expired(days)
         print(f"Deleted {count} relay session(s) older than {days} days.")
 
+    @app.cli.command("purge-expired")
+    def purge_expired_command():
+        """Delete expired relays and unopened folded notes (run from cron)."""
+        from models import FoldedNote, RelaySession
+        relays = RelaySession.purge_expired(app.config["RELAY_RETENTION_DAYS"])
+        notes = FoldedNote.purge_expired()
+        print(f"Deleted {relays} expired relay session(s) and {notes} expired folded note(s).")
+
     # Security headers ---------------------------------------------------------
     @app.context_processor
     def inject_template_globals():

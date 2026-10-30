@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_form.html" import field %}
 
 {% block title %}Teachers Lounge · {{ app_name }}{% endblock %}
 {% block page_class %}page-narrow{% endblock %}
@@ -10,9 +11,36 @@
 </div>
 
 <div class="lounge">
+    <section class="card" aria-labelledby="account-title">
+        <h2 id="account-title">You</h2>
+        {% if g.user %}
+        <p>Signed in as <strong>{{ g.user.email }}</strong>. Your notes sync across your devices.</p>
+        <form method="POST" action="{{ url_for('main.change_name') }}" novalidate>
+            {{ form.hidden_tag() }}
+            {{ field(form.username, hint="Shown on your Recess Relay lines.", autocomplete="nickname") }}
+            <button type="submit" class="btn btn-quiet">Save name</button>
+        </form>
+        <div class="sheet-actions">
+            <form method="POST" action="{{ url_for('main.logout') }}" data-signout>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-quiet logout-link">Sign out</button>
+            </form>
+            <form method="POST" action="{{ url_for('main.logout_everywhere') }}" data-signout>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger" data-confirm="Sign out on every device, including this one?">Sign out everywhere</button>
+            </form>
+        </div>
+        <p class="muted">Signing out removes your notes from this device; they stay safe in your account.</p>
+        {% else %}
+        <p>You're writing without an account. Your notes live on this device only.</p>
+        <p><a class="btn" href="{{ url_for('main.login') }}">Sign in to sync</a></p>
+        <p class="muted">No passwords: we email you a link. Notes already on this device come along.</p>
+        {% endif %}
+    </section>
+
     <section class="card" aria-labelledby="theme-title">
         <h2 id="theme-title">Look</h2>
-        <fieldset class="options" style="border: 0; padding: 0; margin: 0;">
+        <fieldset class="options plain-fieldset">
             <legend class="sr-only">Theme</legend>
             <label class="option"><input type="radio" name="theme" value="light"> Notebook</label>
             <label class="option"><input type="radio" name="theme" value="dark"> Chalkboard</label>
@@ -22,31 +50,21 @@
 
     <section class="card" id="backup" aria-labelledby="backup-title">
         <h2 id="backup-title">Backup</h2>
-        <p>Download everything you've stashed ({{ stash_count }} stash{{ "" if stash_count == 1 else "es" }}) as a file, or bring a backup back in.</p>
-        <p><a class="btn btn-quiet" href="{{ url_for('main.export_data') }}">Download backup</a></p>
-        <form method="POST" action="{{ url_for('main.import_data') }}" enctype="multipart/form-data">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p>Save every note on this device to a file, or bring a backup back in.</p>
+        <p><button type="button" class="btn btn-quiet" id="backup-button">Download backup</button></p>
+        <form id="restore-form">
             <div class="field">
                 <label for="file-input">Restore from a backup</label>
-                <input type="file" id="file-input" name="file" accept=".json,application/json" required>
-                <span class="hint">Stashes you already have are skipped.</span>
+                <input type="file" id="file-input" name="file" accept=".json,application/json">
+                <span class="hint">Notes already here are skipped.</span>
             </div>
             <button type="submit" class="btn">Restore</button>
         </form>
     </section>
 
-    <section class="card" aria-labelledby="account-title">
-        <h2 id="account-title">You</h2>
-        <p>Logged in as <strong>{{ g.user.username }}</strong> ({{ g.user.email }}).</p>
-        <form method="POST" action="{{ url_for('main.logout') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-quiet logout-link">Log out</button>
-        </form>
-    </section>
-
     <section class="card about" aria-labelledby="about-title">
         <h2 id="about-title">About</h2>
-        <p>{{ app_name }} is a pocket notebook: jot something down, stash it, and pass notes like it's recess.</p>
+        <p>{{ app_name }} is a pocket notebook: jot something down, stash it, and pass notes like it's recess. Notes live on your device first, so it works offline.</p>
         <p>It's a web companion inspired by <a href="https://www.mtrostyle.net/ruff/" rel="noopener">ruff</a>, the writing app, and a love letter to the '90s Saturday-morning cartoons its maker grew up on. Built by Irfan.</p>
     </section>
 </div>

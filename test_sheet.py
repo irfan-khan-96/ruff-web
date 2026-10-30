@@ -9,11 +9,12 @@ from datetime import timedelta
 
 import pytest
 
+from conftest import sign_in
+
 from app import create_app
 from models import db, Stash, Tag, User
 from utils import compose_sheet, roster_items, sheet_preview, sheet_title, time_ago, utcnow
 
-PASSWORD = "correct-horse-battery"
 JSON = {"Accept": "application/json"}
 
 
@@ -30,7 +31,6 @@ def app():
 @pytest.fixture
 def user(app):
     user = User(username="kid", email="kid@example.com", email_verified=True)
-    user.set_password(PASSWORD)
     db.session.add(user)
     db.session.commit()
     return user
@@ -38,9 +38,7 @@ def user(app):
 
 @pytest.fixture
 def client(app, user):
-    client = app.test_client()
-    client.post("/login", data={"username": "kid", "password": PASSWORD})
-    return client
+    return sign_in(app.test_client(), user)
 
 
 def stash(client, text, tags="", stash_id=""):
@@ -95,10 +93,12 @@ def test_stash_fields_follow_the_text(app, user):
 
 # Stashing --------------------------------------------------------------------
 
-def test_anyone_can_open_the_sheet(app):
-    response = app.test_client().get("/")
-    assert response.status_code == 200
-    assert b"Sign up to stash" in response.data
+def test_anyone_can_write_and_browse_their_device(app):
+    """Local-first: the sheet and the stash list work without an account."""
+    client = app.test_client()
+    for path in ["/", "/stashes", "/stashes/0e9f6a4c-1d2b-4c3d-8e4f-5a6b7c8d9e0f", "/lounge", "/pass"]:
+        assert client.get(path).status_code == 200, path
+    assert client.get("/stashes/not-a-uuid").status_code == 404
 
 
 def test_stashing_needs_an_account(app):
@@ -140,7 +140,6 @@ def test_stash_validation(client, payload, message):
 
 def test_cannot_update_someone_elses_stash(app, client):
     other = User(username="other", email="other@example.com", email_verified=True)
-    other.set_password(PASSWORD)
     db.session.add(other)
     db.session.flush()
     theirs = Stash(body="theirs", user_id=other.id)
@@ -150,32 +149,107 @@ def test_cannot_update_someone_elses_stash(app, client):
     assert db.session.get(Stash, theirs.id).body == "theirs"
 
 
-def test_open_and_toss(client):
-    item_id = stash(client, "Toss me").get_json()["id"]
-    page = client.get(f"/stashes/{item_id}")
-    assert page.status_code == 200 and b"Toss me" in page.data
-    assert client.post(f"/stashes/{item_id}/delete").status_code == 302
-    assert client.get(f"/stashes/{item_id}").status_code == 404
+# Sync ------------------------------------------------------------------------------
+
+import time
+import uuid
+
+NOW = lambda: int(time.time() * 1000)  # noqa: E731
 
 
-# The stash list ----------------------------------------------------------------
-
-def test_list_search_tags_and_pages(client):
-    for n in range(32):
-        stash(client, f"note {n}", tags="even" if n % 2 == 0 else "")
-    stash(client, "Kickball plan", tags="recess")
-
-    first = client.get("/stashes").get_data(as_text=True)
-    assert first.count('class="stash-card"') == 30 and "Load more" in first
-    second = client.get("/stashes?page=2").get_data(as_text=True)
-    assert second.count('class="stash-card"') == 3 and "Load more" not in second
-
-    assert client.get("/stashes?q=kickball").get_data(as_text=True).count('class="stash-card"') == 1
-    assert client.get("/stashes?tag=even").get_data(as_text=True).count('class="stash-card"') == 16
+def sync(client, changes=(), cursor=None):
+    response = client.post("/api/sync", json={"cursor": cursor, "changes": list(changes)}, headers=JSON)
+    assert response.status_code == 200, response.data
+    return response.get_json()
 
 
-def test_empty_list_invites_writing(client):
-    assert b"Your stash is empty." in client.get("/stashes").data
+def test_sync_uploads_then_returns_changes_since_cursor(client):
+    note = {"id": str(uuid.uuid4()), "text": "Plan\n[ ] ball", "tags": ["Recess"], "updated_at": NOW()}
+    first = sync(client, [note])
+    assert first["accepted"] == [note["id"]] and first["rejected"] == []
+    assert [(s["text"], s["tags"]) for s in first["stashes"]] == [("Plan\n[ ] ball", ["recess"])]
+    stored = db.session.get(Stash, note["id"])
+    assert (stored.title, stored.get_checklist()) == ("Plan", [{"text": "ball", "done": False}])
+    # Nothing new since the cursor (apart from the overlap window, which repeats harmlessly)
+    again = sync(client, cursor=first["cursor"])
+    assert {s["id"] for s in again["stashes"]} <= {note["id"]} and again["deleted"] == []
+
+
+def test_newer_edit_wins(client):
+    note_id = str(uuid.uuid4())
+    sync(client, [{"id": note_id, "text": "v1", "tags": [], "updated_at": NOW()}])
+    sync(client, [{"id": note_id, "text": "older", "tags": [], "updated_at": NOW() - 60_000}])
+    assert db.session.get(Stash, note_id).body == "v1"
+    sync(client, [{"id": note_id, "text": "v2", "tags": [], "updated_at": NOW() + 10}])
+    db.session.expire_all()
+    assert db.session.get(Stash, note_id).body == "v2"
+
+
+def test_deletions_reach_other_devices(app, client, user):
+    other_device = sign_in(app.test_client(), user)
+    note_id = str(uuid.uuid4())
+    sync(client, [{"id": note_id, "text": "toss me", "tags": [], "updated_at": NOW()}])
+    cursor = sync(other_device)["cursor"]
+    sync(client, [{"id": note_id, "deleted": True, "updated_at": NOW() + 10}])
+    assert sync(other_device, cursor=cursor)["deleted"] == [note_id]
+    assert db.session.get(Stash, note_id) is None
+
+
+def test_sync_validates_every_change(client):
+    reply = sync(client, [
+        {"id": "nope", "text": "x", "updated_at": NOW()},
+        {"id": str(uuid.uuid4()), "text": "   ", "updated_at": NOW()},
+        {"id": str(uuid.uuid4()), "text": "x" * 50001, "updated_at": NOW()},
+        {"id": str(uuid.uuid4()), "text": "ok", "updated_at": "yesterday"},
+    ])
+    assert [r["reason"].split(".")[0] for r in reply["rejected"]] == [
+        "bad id", "Write something first", "That's too long", "bad timestamp"]
+    assert client.post("/api/sync", json={"changes": [{}] * 501}, headers=JSON).status_code == 400
+
+
+def test_sync_needs_an_account(app):
+    assert app.test_client().post("/api/sync", json={}, headers=JSON).status_code == 401
+
+
+# Folded notes ---------------------------------------------------------------------------
+
+def test_fold_stores_ciphertext_and_opens_once(app, client):
+    from models import FoldedNote
+    reply = client.post("/fold", json={"ciphertext": "c2VjcmV0", "iv": "aXYxMjM0NTY3ODkw"}, headers=JSON)
+    assert reply.status_code == 201
+    note_id = reply.get_json()["url"].rsplit("/", 1)[1]
+    assert db.session.get(FoldedNote, note_id).ciphertext == "c2VjcmV0"
+
+    reader = app.test_client()
+    assert b"Unfold it" in reader.get(f"/f/{note_id}").data  # looking doesn't open it
+    assert reader.post(f"/f/{note_id}/open").get_json() == {"ciphertext": "c2VjcmV0", "iv": "aXYxMjM0NTY3ODkw"}
+    assert reader.post(f"/f/{note_id}/open").status_code == 404
+    assert b"Already unfolded" in reader.get(f"/f/{note_id}").data
+    assert db.session.get(FoldedNote, note_id) is None
+
+
+def test_expired_folded_notes_dont_open(app, client):
+    from datetime import timedelta
+    from models import FoldedNote
+    note_id = client.post("/fold", json={"ciphertext": "eA", "iv": "eA"}, headers=JSON).get_json()["url"].rsplit("/", 1)[1]
+    db.session.get(FoldedNote, note_id).expires_at = utcnow() - timedelta(seconds=1)
+    db.session.commit()
+    assert app.test_client().post(f"/f/{note_id}/open").status_code == 404
+    assert app.test_cli_runner().invoke(args=["purge-expired"]).output.strip().endswith("1 expired folded note(s).")
+
+
+@pytest.mark.parametrize("payload", [
+    {"ciphertext": "not base64!", "iv": "eA"},
+    {"ciphertext": "eA", "iv": "x" * 40},
+    {"ciphertext": "a" * 120_001, "iv": "eA"},
+    {},
+])
+def test_fold_rejects_junk(client, payload):
+    assert client.post("/fold", json=payload, headers=JSON).status_code == 400
+
+
+def test_folding_needs_an_account(app):
+    assert app.test_client().post("/fold", json={"ciphertext": "eA", "iv": "eA"}, headers=JSON).status_code == 401
 
 
 # Backups -----------------------------------------------------------------------

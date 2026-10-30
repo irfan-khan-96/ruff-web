@@ -7,7 +7,7 @@
 #   open http://localhost:8000
 #
 # Admin tasks run as one-off processes in the same image, e.g.
-#   docker compose run --rm web flask --app "app:create_app()" purge-relays
+#   docker compose run --rm web flask --app "app:create_app()" purge-expired
 
 x-app-env: &app-env
   DATABASE_URL: postgresql://ruff:ruff@db:5432/ruff
@@ -15,9 +15,10 @@ x-app-env: &app-env
   SOCKETIO_MESSAGE_QUEUE: redis://redis:6379/1
   SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
   SECURITY_PASSWORD_SALT: ${SECURITY_PASSWORD_SALT:?set SECURITY_PASSWORD_SALT in .env}
-  # Local: plain HTTP and no mail server
+  # Local: plain HTTP, and no mail server: sign-in links are printed in the
+  # web container's log (docker compose logs web)
   SESSION_COOKIE_SECURE: "0"
-  REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-0}
+  MAIL_TO_LOG: "1"
   # Migrations run in the "release" service below, not in every web process
   RUN_MIGRATIONS: "0"
 

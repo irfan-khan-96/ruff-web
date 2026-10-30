@@ -6,6 +6,8 @@ from datetime import timedelta
 
 import pytest
 
+from conftest import sign_in
+
 from app import create_app
 from models import db, User, RelaySession, RelayEntry
 from utils import utcnow
@@ -25,7 +27,6 @@ def app():
 @pytest.fixture
 def owner(app):
     user = User(username="owner", email="owner@example.com", email_verified=True)
-    user.set_password("password123")
     db.session.add(user)
     db.session.commit()
     return user
@@ -65,8 +66,7 @@ def test_expired_relay_is_not_found_before_purge(app, owner):
 
 def test_starting_a_relay_purges_expired_ones(app, owner):
     make_relay(owner, "OLD001", age_days=31)
-    client = app.test_client()
-    client.post("/login", data={"username": "owner", "password": "password123"})
+    client = sign_in(app.test_client(), owner)
 
     response = client.post("/relay", data={"action": "start", "title": "Fresh"})
 

@@ -26,38 +26,28 @@
 {% set section = {
     'main.index': 'write', 'main.view_stash': 'write',
     'main.view_stashes': 'stash',
-    'main.pass_hub': 'pass', 'main.share_stash': 'pass', 'main.relay_view': 'pass',
-    'main.lounge': 'lounge',
-    'main.login': 'login', 'main.signup': 'login',
+    'main.pass_hub': 'pass', 'main.share_stash': 'pass', 'main.relay_view': 'pass', 'main.folded': 'pass',
+    'main.lounge': 'lounge', 'main.login': 'lounge', 'main.check_email': 'lounge', 'main.auth_link': 'lounge',
 }.get(request.endpoint) %}
 {% macro nav_items() %}
     <a class="nav-link" href="{{ url_for('main.index') }}" {% if section == 'write' %}aria-current="page"{% endif %}>
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>
         <span>Write</span>
     </a>
-    {% if g.user %}
     <a class="nav-link" href="{{ url_for('main.view_stashes') }}" {% if section == 'stash' %}aria-current="page"{% endif %}>
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8z"/><path d="M3 4h18v4H3z"/><path d="M10 12h4"/></svg>
         <span>Stash</span>
     </a>
-    {% endif %}
     <a class="nav-link" href="{{ url_for('main.pass_hub') }}" {% if section == 'pass' %}aria-current="page"{% endif %}>
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4"/><path d="M8 12h8M8 16h5"/></svg>
         <span>Pass</span>
     </a>
-    {% if g.user %}
     <a class="nav-link" href="{{ url_for('main.lounge') }}" {% if section == 'lounge' %}aria-current="page"{% endif %}>
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10h10v5a4 4 0 0 1-4 4h-2a4 4 0 0 1-4-4v-5z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M9 3v3M13 3v3"/></svg>
         <span>Lounge</span>
     </a>
-    {% else %}
-    <a class="nav-link" href="{{ url_for('main.login') }}" {% if section == 'login' %}aria-current="page"{% endif %}>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-        <span>Log in</span>
-    </a>
-    {% endif %}
 {% endmacro %}
-<body>
+<body data-user-id="{{ g.user.id if g.user else '' }}" data-csrf="{{ csrf_token() }}">
     <a class="sr-only" href="#main-content">Skip to content</a>
     <header class="topbar">
         <div class="topbar-inner">
@@ -83,8 +73,9 @@
 
     <footer class="site-footer">{{ app_name }} · keep stashing</footer>
 
-    <nav class="tabbar" aria-label="Main" style="--tabs: {{ 4 if g.user else 3 }}">{{ nav_items() }}</nav>
+    <nav class="tabbar" aria-label="Main">{{ nav_items() }}</nav>
 
+    <script src="{{ url_for('static', filename='store.js') }}"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

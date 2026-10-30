@@ -2,31 +2,27 @@
 Route handlers for the Ruff application.
 """
 
-import functools
+import hmac
 import logging
 import os
 import json
+import re
 import secrets
 import string
+from datetime import datetime, timedelta, timezone
+
 from utils import utcnow
 from functools import wraps
 from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, g, send_file, send_from_directory, abort
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from sqlalchemy import or_, text, func
+from sqlalchemy import delete as sa_delete, func, text
 from werkzeug.exceptions import HTTPException
-from werkzeug.security import check_password_hash, generate_password_hash
 from io import BytesIO
 
-from forms import (
-    LoginForm,
-    SignupForm,
-    ResendVerificationForm,
-    ForgotPasswordForm,
-    ResetPasswordForm,
-)
-from models import db, Stash, Tag, User, RelaySession, RelayEntry
+from forms import EmailForm, NameForm
+from models import db, FoldedNote, RelayEntry, RelaySession, Stash, StashTombstone, Tag, User
 from export_import import (
     export_to_json,
     export_stash_to_text,
@@ -35,11 +31,12 @@ from export_import import (
     MAX_TAG_LENGTH,
 )
 from auth_utils import (
-    generate_token,
-    verify_token,
-    send_email,
-    password_fingerprint,
     load_session_user,
+    login_link_token,
+    read_link_token,
+    send_email,
+    signup_link_token,
+    start_session,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,22 +104,6 @@ def load_logged_in_user():
     g.user = load_session_user(session)
 
 
-def get_user_tags_with_counts(user_id: int):
-    """Return tags for a user with stash counts."""
-    rows = (
-        db.session.query(Tag, func.count(Stash.id))
-        .join(Tag.stashes)
-        .filter(Stash.user_id == user_id)
-        .group_by(Tag.id)
-        .order_by(Tag.name)
-        .all()
-    )
-    return [
-        {"id": tag.id, "name": tag.name, "stash_count": count}
-        for tag, count in rows
-    ]
-
-
 def purge_expired_relays() -> None:
     """Opportunistic cleanup when relays are created; never blocks the request."""
     try:
@@ -155,111 +136,126 @@ def generate_relay_code(length: int = 6) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-def _login_username_key() -> str:
-    """Rate-limit key for login attempts against one account, from any IP."""
-    return "login-user:" + (request.form.get("username") or "").strip().lower()
+# ============================================================================
+# Passwordless sign-in: email links
+# ============================================================================
+
+LOGIN_LINK_MAX_AGE = 15 * 60  # seconds
 
 
-@functools.lru_cache(maxsize=1)
-def _dummy_password_hash() -> str:
-    """A real hash to check against when the username doesn't exist."""
-    return generate_password_hash(secrets.token_urlsafe(16))
+def _login_email_key() -> str:
+    """Rate-limit key for sign-in links sent to one address, from any IP."""
+    return "login-email:" + (request.form.get("email") or "").strip().lower()
+
+
+def unique_username(email: str) -> str:
+    """A starting name from the email's local part (changeable in the Lounge)."""
+    base = re.sub(r"[^a-z0-9_.-]", "", email.split("@", 1)[0].lower())[:24]
+    base = base if len(base) >= 3 else f"{base}pal"
+    name, n = base, 1
+    while User.query.filter_by(username=name).first():
+        n += 1
+        name = f"{base}{n}"
+    return name
 
 
 @bp.route("/login", methods=["GET", "POST"])
-@limiter.limit("10 per minute", methods=["POST"])  # per IP
-@limiter.limit("20 per hour", key_func=_login_username_key, methods=["POST"])  # per account
+@limiter.limit("5 per minute", methods=["POST"])  # per IP
+@limiter.limit("10 per hour", key_func=_login_email_key, methods=["POST"])  # per address
 def login():
-    """Handle user login."""
+    """Sign in or sign up: we email a link either way (no passwords)."""
     if g.user is not None:
         return redirect(url_for("main.index"))
-    
-    form = LoginForm()
+
+    form = EmailForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
+        email = form.email.data.strip().lower()
+        user = User.query.filter(func.lower(User.email) == email).first()
+        app_name = current_app.config["APP_NAME"]
+        if user:
+            token = login_link_token(user)
+            db.session.commit()
+            subject, intro = f"Your {app_name} sign-in link", "Tap to sign in"
+        else:
+            token = signup_link_token(email)
+            subject, intro = f"Your {app_name} notebook is ready", "Tap to start your notebook"
+        link = url_for("main.auth_link", token=token, _external=True)
+        send_email(email, subject,
+                   f"{intro}: {link}\n\nThe link works once, within 15 minutes. "
+                   "If you didn't ask for it, you can ignore this email.")
+        # Same answer whether or not the address has an account (no enumeration)
+        security_log.info("Sign-in link requested from %s (account exists: %s)", request.remote_addr, bool(user))
+        return redirect(url_for("main.check_email"))
 
-        if user is None:
-            # Hash anyway so unknown usernames take as long as wrong passwords
-            # (otherwise response time reveals which usernames exist)
-            check_password_hash(_dummy_password_hash(), form.password.data)
-        if user is None or not user.check_password(form.password.data):
-            security_log.warning(
-                "Failed login for username=%r from %s", form.username.data, request.remote_addr
-            )
-            flash("That username and password don't match.", "danger")
-            return redirect(url_for("main.login"))
-
-        if current_app.config.get("REQUIRE_EMAIL_VERIFICATION", True) and not user.email_verified:
-            flash("Check your email to verify your account first.", "warning")
-            return redirect(url_for("main.resend_verification", email=user.email))
-        
-        session.clear()
-        session['user_id'] = user.id
-        session['pw'] = password_fingerprint(user)
-        session.permanent = bool(form.remember.data)
-        logger.info(f"User {user.username} logged in")
-        flash(f"Welcome back, {user.username}.", "success")
-        return redirect(url_for("main.index"))
-    
     return render_template("login.html", form=form)
 
 
-@bp.route("/signup", methods=["GET", "POST"])
-@limiter.limit("5 per minute", methods=["POST"])
-def signup():
-    """Handle user registration."""
-    if g.user is not None:
-        return redirect(url_for("main.index"))
-    
-    form = SignupForm()
-    if form.validate_on_submit():
-        email = form.email.data.strip().lower()
-        if User.query.filter(func.lower(User.email) == email).first():
-            # Respond exactly as for a new account so the form can't be used to
-            # find out who is registered; tell the real owner instead
-            send_email(
-                email,
-                "Someone tried to sign up with your email",
-                "Someone tried to create a Ruff account with this email address. "
-                "If it was you, log in or reset your password instead. "
-                "If not, you can ignore this message.",
-            )
-            security_log.info("Signup attempted with an existing email from %s", request.remote_addr)
-            flash("Almost there. Check your email to verify your account.", "success")
-            return redirect(url_for("main.login"))
+@bp.route("/login/sent")
+def check_email():
+    return render_template("check_email.html")
 
-        user = User(
-            username=form.username.data.strip(),
-            email=form.email.data.strip().lower()
-        )
-        user.set_password(form.password.data)
-        
-        try:
-            db.session.add(user)
-            db.session.commit()
-            logger.info(f"New user registered: {user.username}")
-            token = generate_token(user, "email_verify")
-            verify_url = url_for("main.verify_email", token=token, _external=True)
-            send_email(
-                user.email,
-                "Verify your Ruff account",
-                f"Verify your email: {verify_url}",
-            )
-            flash("Almost there. Check your email to verify your account.", "success")
-            return redirect(url_for("main.login"))
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Error creating user: {e}")
-            flash("Couldn't create your account. Try again?", "danger")
-            db.session.rollback()
-    
-    return render_template("signup.html", form=form)
+
+def _link_user(data):
+    """The account a link signs into, or None if the link is spent/invalid."""
+    if data["purpose"] == "login":
+        user = db.session.get(User, data.get("uid"))
+        if user and user.login_nonce and hmac.compare_digest(user.login_nonce, str(data.get("nonce", ""))):
+            return user
+        return None
+    # signup: valid until the account exists
+    email = str(data.get("email", "")).strip().lower()
+    if not email or User.query.filter(func.lower(User.email) == email).first():
+        return None
+    return email
+
+
+@bp.route("/auth/<token>", methods=["GET", "POST"])
+@limiter.limit("30 per hour", methods=["POST"])
+def auth_link(token):
+    """
+    Open a sign-in link. GET only shows a button: email security scanners open
+    links automatically, and would otherwise use up the single-use link.
+    """
+    data, error = read_link_token(token, LOGIN_LINK_MAX_AGE)
+    target = _link_user(data) if data else None
+    if target is None:
+        security_log.warning("Unusable sign-in link (%s) from %s", error or "used", request.remote_addr)
+        flash("That link expired or was already used. Get a fresh one.", "warning")
+        return redirect(url_for("main.login"))
+
+    if request.method == "GET":
+        new = isinstance(target, str)
+        return render_template("auth_confirm.html", email=target if new else target.email, new=new)
+
+    if isinstance(target, str):
+        user = User(username=unique_username(target), email=target)
+        db.session.add(user)
+        welcome = "Your notebook's ready. Welcome!"
+    else:
+        user = target
+        user.login_nonce = None  # spent
+        welcome = f"Welcome back, {user.username}."
+    user.email_verified = True
+    user.email_verified_at = user.email_verified_at or utcnow()
+    db.session.commit()
+    start_session(session, user)
+    security_log.info("Signed in user_id=%s from %s", user.id, request.remote_addr)
+    flash(welcome, "success")
+    return redirect(url_for("main.index"))
+
+
+@bp.route("/signup")
+@bp.route("/verify/resend")
+@bp.route("/password/forgot")
+@bp.route("/verify/<token>")
+@bp.route("/password/reset/<token>")
+def legacy_auth(token=None):
+    """Old password, verification and reset links: sign-in is by email link now."""
+    return redirect(url_for("main.login"))
 
 
 @bp.route("/logout", methods=["POST"])
 def logout():
-    """Handle user logout."""
     if g.user is not None:
         logger.info(f"User {g.user.username} logged out")
     session.clear()
@@ -267,107 +263,33 @@ def logout():
     return redirect(url_for("main.login"))
 
 
-@bp.route("/verify/<token>")
-def verify_email(token):
-    """Verify a user's email address."""
-    user, error = verify_token(
-        token,
-        "email_verify",
-        current_app.config.get("EMAIL_VERIFY_TOKEN_EXP", 86400),
-    )
-    if error:
-        flash("That link expired or doesn't work. Get a new one below.", "danger")
-        return redirect(url_for("main.resend_verification"))
-
-    if not user.email_verified:
-        user.email_verified = True
-        user.email_verified_at = utcnow()
-        db.session.commit()
-        flash("Email verified. Log in and start writing.", "success")
-    else:
-        flash("You're already verified. Log in.", "info")
+@bp.route("/logout/everywhere", methods=["POST"])
+@login_required
+def logout_everywhere():
+    """End every session of this account, on every device."""
+    g.user.session_epoch = (g.user.session_epoch or 0) + 1
+    g.user.login_nonce = None
+    db.session.commit()
+    security_log.info("Signed out everywhere: user_id=%s from %s", g.user.id, request.remote_addr)
+    session.clear()
+    flash("Signed out on every device.", "info")
     return redirect(url_for("main.login"))
 
 
-@bp.route("/verify/resend", methods=["GET", "POST"])
-@limiter.limit("5 per minute")
-def resend_verification():
-    """Resend verification email."""
-    form = ResendVerificationForm()
-    if request.method == "GET" and request.args.get("email"):
-        form.email.data = request.args.get("email")
-    if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data.strip().lower()).first()
-        if user and not user.email_verified:
-            token = generate_token(user, "email_verify")
-            verify_url = url_for("main.verify_email", token=token, _external=True)
-            send_email(
-                user.email,
-                "Verify your Ruff account",
-                f"Verify your email: {verify_url}",
-            )
-        flash("If that email has an account, a new link is on its way.", "info")
-        return redirect(url_for("main.login"))
-    return render_template("resend_verification.html", form=form)
-
-
-@bp.route("/password/forgot", methods=["GET", "POST"])
-@limiter.limit("5 per minute")
-def forgot_password():
-    """Request a password reset email."""
-    form = ForgotPasswordForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data.strip().lower()).first()
-        security_log.info(
-            "Password reset requested from %s (account exists: %s)", request.remote_addr, bool(user)
-        )
-        if user:
-            token = generate_token(user, "password_reset")
-            reset_url = url_for("main.reset_password", token=token, _external=True)
-            send_email(
-                user.email,
-                "Reset your Ruff password",
-                f"Reset your password: {reset_url}",
-            )
-        flash("If that email has an account, a reset link is on its way.", "info")
-        return redirect(url_for("main.login"))
-    return render_template("forgot_password.html", form=form)
-
-
-@bp.route("/password/reset/<token>", methods=["GET", "POST"])
-@limiter.limit("10 per hour")
-def reset_password(token):
-    """Reset a user's password."""
-    user, error = verify_token(
-        token,
-        "password_reset",
-        current_app.config.get("PASSWORD_RESET_TOKEN_EXP", 3600),
-    )
-    if error:
-        security_log.warning("Invalid or expired password reset link (%s) from %s", error, request.remote_addr)
-        flash("That reset link expired or doesn't work. Ask for a new one.", "danger")
-        return redirect(url_for("main.forgot_password"))
-
-    form = ResetPasswordForm()
-    if form.validate_on_submit():
-        user.set_password(form.password.data)
-        db.session.commit()
-        security_log.info("Password reset completed for user_id=%s from %s", user.id, request.remote_addr)
-        flash("Password changed. Log in with the new one.", "success")
-        return redirect(url_for("main.login"))
-    return render_template("reset_password.html", form=form)
-
-
 # ============================================================================
-# The sheet: write, stash, open
+# The sheet (local-first)
+# Notes live in the browser (IndexedDB) and work offline and without an
+# account. Signed-in devices sync through /api/sync; these pages are shells
+# that the browser fills from its local store.
 # ============================================================================
 
-PAGE_SIZE = 30
 MAX_TAGS = 20
+MAX_SYNC_CHANGES = 500
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 def wants_json() -> bool:
-    """True for fetch() calls from the sheet (progressive enhancement)."""
+    """True for fetch() calls (JSON in or out)."""
     return request.accept_mimetypes.best == "application/json" or request.is_json
 
 
@@ -382,71 +304,72 @@ def parse_tags(raw) -> list:
     return clean
 
 
-def recent_stashes(user_id: int, limit: int = 8):
-    return (Stash.query.filter_by(user_id=user_id)
-            .order_by(Stash.updated_at.desc()).limit(limit).all())
+def note_error(text: str, tags: list):
+    """Why a note can't be saved, or None."""
+    if not text.strip():
+        return "Write something first."
+    if len(text) > current_app.config["MAX_STASH_LENGTH"]:
+        return f"That's too long. Keep it under {current_app.config['MAX_STASH_LENGTH']:,} characters."
+    if len(tags) > MAX_TAGS or any(len(name) > MAX_TAG_LENGTH for name in tags):
+        return f"Up to {MAX_TAGS} tags, {MAX_TAG_LENGTH} characters each."
+    return None
+
+
+def toss(stash) -> None:
+    """Delete a stash and leave a tombstone so other devices drop it too."""
+    db.session.merge(StashTombstone(stash_id=stash.id, user_id=stash.user_id, deleted_at=utcnow()))
+    db.session.delete(stash)
 
 
 @bp.route("/")
 def index():
-    """A fresh sheet. Anyone can write; stashing needs an account."""
-    recent = recent_stashes(g.user.id) if g.user else []
-    return render_template("sheet.html", stash=None, recent=recent)
+    """A fresh sheet. Anyone can write and stash; signing in adds sync."""
+    return render_template("sheet.html", stash_id=None)
 
 
 @bp.route("/stashes/<stash_id>")
-@login_required
 def view_stash(stash_id):
-    """Open a stash in the sheet."""
-    stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-    return render_template("sheet.html", stash=stash, recent=recent_stashes(g.user.id))
+    """A stash, opened in the sheet (loaded from this device's store)."""
+    if not UUID_RE.match(stash_id):
+        abort(404)
+    return render_template("sheet.html", stash_id=stash_id)
+
+
+@bp.route("/stashes")
+def view_stashes():
+    """Everything stashed on this device (and synced from others)."""
+    return render_template("stashes.html")
 
 
 @bp.route("/stash", methods=["POST"])
 @login_required
 def stash():
-    """Stash the sheet: create a new stash, or update `stash_id`."""
+    """Server-side create/update of one stash (JSON API; the app itself syncs)."""
     data = request.get_json(silent=True) if request.is_json else request.form
     data = data or {}
     text = str(data.get("text") or "").replace("\r\n", "\n")
     tags = parse_tags(data.get("tags"))
     stash_id = (data.get("stash_id") or "").strip()
 
-    error = None
-    if not text.strip():
-        error = "Write something first."
-    elif len(text) > current_app.config["MAX_STASH_LENGTH"]:
-        error = f"That's too long. Keep it under {current_app.config['MAX_STASH_LENGTH']:,} characters."
-    elif len(tags) > MAX_TAGS or any(len(name) > MAX_TAG_LENGTH for name in tags):
-        error = f"Up to {MAX_TAGS} tags, {MAX_TAG_LENGTH} characters each."
+    error = note_error(text, tags)
     if error:
         if wants_json():
             return {"error": error}, 400
         flash(error, "error")
-        return redirect(url_for("main.view_stash", stash_id=stash_id) if stash_id else url_for("main.index"))
-
-    try:
-        if stash_id:
-            item = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-            item.set_text(text)
-            item.updated_at = utcnow()
-        else:
-            item = Stash(body=text, user_id=g.user.id)
-            db.session.add(item)
-            db.session.flush()
-        item.tags.clear()
-        for name in tags:
-            item.add_tag(name)
-        db.session.commit()
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error stashing: {e}")
-        if wants_json():
-            return {"error": "Couldn't stash that. Try again?"}, 500
-        flash("Couldn't stash that. Try again?", "error")
         return redirect(url_for("main.index"))
+
+    if stash_id:
+        item = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+        item.set_text(text)
+        item.updated_at = utcnow()
+    else:
+        item = Stash(body=text, user_id=g.user.id)
+        db.session.add(item)
+        db.session.flush()
+    item.tags.clear()
+    for name in tags:
+        item.add_tag(name)
+    db.session.commit()
 
     if wants_json():
         return {"id": item.id, "title": item.title, "url": url_for("main.view_stash", stash_id=item.id),
@@ -455,48 +378,182 @@ def stash():
     return redirect(url_for("main.view_stash", stash_id=item.id))
 
 
-@bp.route("/stashes")
-@login_required
-def view_stashes():
-    """Everything stashed: search, tag chips, newest first, loaded in pages."""
-    tag_name = (request.args.get("tag") or "").strip().lower() or None
-    search_query = (request.args.get("q") or request.args.get("search") or "").strip() or None
-    page = max(request.args.get("page", 1, type=int) or 1, 1)
-
-    query = Stash.query.filter_by(user_id=g.user.id)
-    if tag_name:
-        query = query.join(Stash.tags).filter(Tag.name == tag_name)
-    if search_query:
-        pattern = f"%{search_query}%"
-        query = query.filter(or_(Stash.title.ilike(pattern), Stash.body.ilike(pattern)))
-    rows = (query.order_by(Stash.updated_at.desc())
-            .offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE + 1).all())
-
-    return render_template(
-        "stashes.html",
-        stashes=[s.to_dict() for s in rows[:PAGE_SIZE]],
-        has_more=len(rows) > PAGE_SIZE,
-        page=page,
-        tags=get_user_tags_with_counts(g.user.id),
-        current_tag=tag_name,
-        search_query=search_query,
-    )
-
-
 @bp.route("/stashes/<stash_id>/delete", methods=["POST"])
 @login_required
 def delete_stash(stash_id):
-    """Throw a stash away."""
+    """Throw a stash away (server side; the app itself syncs deletions)."""
     stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
+    toss(stash)
+    db.session.commit()
+    flash("Tossed it.", "success")
+    return redirect(url_for("main.view_stashes"))
+
+
+def _ms_to_utc(value):
+    """Client timestamp (ms since epoch) -> naive UTC, never in the future."""
     try:
-        db.session.delete(stash)
-        db.session.commit()
-        flash("Tossed it.", "success")
+        moment = datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc).replace(tzinfo=None)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    return min(moment, utcnow())
+
+
+def _sync_payload(item) -> dict:
+    return {
+        "id": item.id,
+        "text": item.body,
+        "tags": sorted(t.name for t in item.tags),
+        "updated_at": int(item.updated_at.replace(tzinfo=timezone.utc).timestamp() * 1000),
+    }
+
+
+@bp.route("/api/sync", methods=["POST"])
+@login_required
+@limiter.limit("240 per hour")
+def sync():
+    """
+    Two-way sync for one device. The device sends its changes since its last
+    sync ({id, text, tags, updated_at, deleted}); the newer version of each
+    note wins. The reply holds every change this device hasn't seen since
+    `cursor` (server write times), plus a new cursor.
+    """
+    data = request.get_json(silent=True) or {}
+    changes = data.get("changes") or []
+    if not isinstance(changes, list) or len(changes) > MAX_SYNC_CHANGES:
+        return {"error": f"Send up to {MAX_SYNC_CHANGES} changes at a time."}, 400
+    try:
+        cursor = datetime.fromisoformat(data["cursor"]) if data.get("cursor") else None
+    except (TypeError, ValueError):
+        return {"error": "Bad cursor."}, 400
+
+    started = utcnow()
+    accepted, rejected = [], []
+    for change in changes:
+        if not isinstance(change, dict) or not UUID_RE.match(str(change.get("id", ""))):
+            rejected.append({"id": change.get("id") if isinstance(change, dict) else None, "reason": "bad id"})
+            continue
+        note_id = change["id"]
+        when = _ms_to_utc(change.get("updated_at"))
+        if when is None:
+            rejected.append({"id": note_id, "reason": "bad timestamp"})
+            continue
+        item = db.session.get(Stash, note_id)
+        tomb = db.session.get(StashTombstone, note_id)
+        if (item and item.user_id != g.user.id) or (tomb and tomb.user_id != g.user.id):
+            rejected.append({"id": note_id, "reason": "not yours"})
+            continue
+
+        if change.get("deleted"):
+            if item and item.updated_at <= when:
+                toss(item)
+            elif not item and not tomb:
+                db.session.add(StashTombstone(stash_id=note_id, user_id=g.user.id, deleted_at=started))
+            accepted.append(note_id)
+            continue
+
+        text = str(change.get("text") or "").replace("\r\n", "\n")
+        tags = parse_tags(change.get("tags"))
+        error = note_error(text, tags)
+        if error:
+            rejected.append({"id": note_id, "reason": error})
+            continue
+        if item and item.updated_at > when:
+            accepted.append(note_id)  # the server's copy is newer; the device gets it below
+            continue
+        if tomb:
+            if tomb.deleted_at > when:
+                accepted.append(note_id)  # deleted after this edit was made
+                continue
+            db.session.delete(tomb)  # edited after the deletion: bring it back
+        if item is None:
+            item = Stash(body=text, id=note_id, user_id=g.user.id)
+            db.session.add(item)
+        else:
+            item.set_text(text)
+        item.updated_at = when
+        item.tags.clear()
+        for name in tags:
+            item.add_tag(name)
+        accepted.append(note_id)
+    db.session.commit()
+
+    stashes = Stash.query.filter_by(user_id=g.user.id)
+    tombs = StashTombstone.query.filter_by(user_id=g.user.id)
+    if cursor is not None:
+        stashes = stashes.filter(Stash.synced_at >= cursor)
+        tombs = tombs.filter(StashTombstone.deleted_at >= cursor)
+    else:
+        tombs = tombs.filter(db.false())  # a first sync only needs what exists
+    return {
+        # A few seconds of overlap so writes racing this request aren't missed
+        "cursor": (started - timedelta(seconds=5)).isoformat(),
+        "stashes": [_sync_payload(item) for item in stashes.all()],
+        "deleted": [tomb.stash_id for tomb in tombs.all()],
+        "accepted": accepted,
+        "rejected": rejected,
+    }, 200
+
+
+# ============================================================================
+# Folded notes: passed by link, open once, end-to-end encrypted
+# ============================================================================
+
+FOLD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,32}$")
+B64_RE = re.compile(r"^[A-Za-z0-9_-]+={0,2}$")
+MAX_FOLD_CIPHERTEXT = 120_000  # ~50,000 characters of text, encrypted and base64'd
+
+
+@bp.route("/fold", methods=["POST"])
+@login_required
+@limiter.limit("60 per hour")
+def fold():
+    """
+    Store an encrypted note for one reader. The browser encrypted it; the key
+    stays in the link's #fragment, which never reaches the server.
+    """
+    data = request.get_json(silent=True) or {}
+    ciphertext, iv = str(data.get("ciphertext") or ""), str(data.get("iv") or "")
+    if not (B64_RE.match(ciphertext) and B64_RE.match(iv)) or len(iv) > 32 or len(ciphertext) > MAX_FOLD_CIPHERTEXT:
+        return {"error": "That note can't be folded."}, 400
+    try:
+        FoldedNote.purge_expired()
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error deleting stash {stash_id}: {e}")
-        flash("Couldn't toss that. Try again?", "error")
-    return redirect(url_for("main.view_stashes"))
+        logger.error(f"Folded note cleanup failed: {e}")
+    note = FoldedNote(
+        id=secrets.token_urlsafe(16), sender_id=g.user.id, ciphertext=ciphertext, iv=iv,
+        expires_at=utcnow() + timedelta(days=current_app.config["FOLD_TTL_DAYS"]),
+    )
+    db.session.add(note)
+    db.session.commit()
+    return {"url": url_for("main.folded", note_id=note.id, _external=True),
+            "expires_at": note.expires_at.isoformat()}, 201
+
+
+@bp.route("/f/<note_id>")
+def folded(note_id):
+    """Someone passed you a note. Opening it is a separate, deliberate step."""
+    note = db.session.get(FoldedNote, note_id) if FOLD_ID_RE.match(note_id) else None
+    waiting = note is not None and note.expires_at > utcnow()
+    return render_template("folded.html", note_id=note_id, waiting=waiting)
+
+
+@bp.route("/f/<note_id>/open", methods=["POST"])
+@limiter.limit("30 per minute")
+def open_folded(note_id):
+    """Hand over the ciphertext exactly once: it's deleted in the same statement."""
+    if not FOLD_ID_RE.match(note_id):
+        return {"error": "gone"}, 404
+    row = db.session.execute(
+        sa_delete(FoldedNote)
+        .where(FoldedNote.id == note_id, FoldedNote.expires_at > utcnow())
+        .returning(FoldedNote.ciphertext, FoldedNote.iv)
+    ).first()
+    db.session.commit()
+    if row is None:
+        return {"error": "gone"}, 404
+    security_log.info("Folded note opened from %s", request.remote_addr)
+    return {"ciphertext": row.ciphertext, "iv": row.iv}, 200
 
 
 # ============================================================================
@@ -505,19 +562,28 @@ def delete_stash(stash_id):
 
 @bp.route("/pass")
 def pass_hub(stash_id=None):
-    """Pass a note: start or join a relay, or share a stash nearby."""
-    stash = None
-    if stash_id and g.user:
-        stash = Stash.query.filter_by(id=stash_id, user_id=g.user.id).first_or_404()
-    recent = recent_stashes(g.user.id, limit=50) if g.user else []
-    return render_template("pass.html", stash=stash.to_dict() if stash else None, recent=recent)
+    """Pass a note: fold one, start or join a relay, or share nearby."""
+    return render_template("pass.html", stash_id=stash_id)
 
 
 @bp.route("/lounge")
-@login_required
 def lounge():
     """Teachers Lounge: theme, backup, account, about."""
-    return render_template("lounge.html", stash_count=Stash.query.filter_by(user_id=g.user.id).count())
+    form = NameForm(obj=g.user, current_user=g.user) if g.user else None
+    return render_template("lounge.html", form=form)
+
+
+@bp.route("/lounge/name", methods=["POST"])
+@login_required
+def change_name():
+    form = NameForm(current_user=g.user)
+    if form.validate_on_submit():
+        g.user.username = form.username.data
+        db.session.commit()
+        flash("Name changed.", "success")
+    else:
+        flash(" ".join(form.username.errors) or "That didn't work. Try again?", "error")
+    return redirect(url_for("main.lounge"))
 
 
 # ============================================================================
@@ -594,7 +660,9 @@ def share():
 @bp.route("/share/<stash_id>")
 @login_required
 def share_stash(stash_id):
-    """The Pass page with this stash ready to send."""
+    """The Pass page with this note ready to send."""
+    if not UUID_RE.match(stash_id):
+        abort(404)
     return pass_hub(stash_id=stash_id)
 
 
