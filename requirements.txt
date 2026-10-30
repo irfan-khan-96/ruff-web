@@ -11,7 +11,7 @@ email-validator==2.3.0
 Flask-SQLAlchemy==3.1.1
 # PostgreSQL driver (DATABASE_URL=postgres://...); SQLite needs none
 psycopg[binary]==3.3.6
-SQLAlchemy==2.1.4
+SQLAlchemy==2.1.6
 Flask-Limiter==4.1.1
 # Rate-limit storage backend when RATELIMIT_STORAGE_URL=redis://...
 redis==8.1.0
