@@ -31,7 +31,7 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 ### A04 Cryptographic Failures
 - No passwords are stored or accepted. Sign-in links are HMAC-signed, expire after 15 minutes, and are single-use (a per-account nonce, rotated on every request and on use).
 - Folded notes are encrypted in the sender's browser (AES-GCM, 256-bit). The key travels only in the link's `#fragment`, which browsers never send to servers, so the server stores and serves ciphertext it cannot read. The note is deleted in the same statement that hands it over.
-- Random values (relay codes, share codes, CSP nonces) come from cryptographically secure generators.
+- Random values (relay codes, folded-note ids, CSP nonces) come from cryptographically secure generators.
 
 ### A05 Injection
 - All database access goes through SQLAlchemy with bound parameters.
@@ -39,7 +39,7 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - Download filenames derived from user content are reduced to safe characters (no header injection).
 
 ### A06 Insecure Design
-- Rate limits: login 10/minute per IP and 20/hour per account (across IPs), sign-up and email endpoints 5/minute, plus global defaults.
+- Rate limits: sign-in links 5/minute per IP and 10/hour per address (across IPs), passkey sign-in 10/minute, sync 30/minute, folding 60/hour, plus a default (`RATELIMIT_DEFAULT`) for every other action. Page views, health probes and the service worker are not limited.
 - Request size capped (`MAX_CONTENT_LENGTH`, default 16 MB); stash body, title and tag limits enforced on every import path.
 - Expired Recess Relay sessions are deleted after `RELAY_RETENTION_DAYS`.
 
@@ -72,11 +72,11 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 |---|---|
 | Old database file in git history | **Action required:** commits before `8681958` contain a SQLite database with two accounts' emails and password hashes. Remove it from history (`git filter-repo`, then force-push). Passwords are no longer used here, so the hashes can't sign anyone in, but those two people should change that password anywhere else they reused it. |
 | Deployment settings | **Action required:** set strong `SECRET_KEY` / `SECURITY_PASSWORD_SALT`, serve over HTTPS (or set `SESSION_COOKIE_SECURE=0`), and `PROXY_FIX_COUNT` when behind a proxy. |
-| Multi-factor authentication | Not implemented; sign-in strength equals the email account's. Passkeys would be the next step. |
+| Multi-factor authentication | Not implemented. Passkeys are optional; an emailed link still signs in, so sign-in strength equals the email account's. |
 | `style-src 'unsafe-inline'` in the CSP | Accepted: templates use inline styles; scripts remain strictly nonce-based. |
-| Rate-limit and share-join counters | Kept per process; with more than one process or host, set `RATELIMIT_STORAGE_URL=redis://...` (share-join throttling stays per process). |
+| Rate-limit counters | Kept per process; with more than one process or host, set `RATELIMIT_STORAGE_URL=redis://...`. |
 | Backups | SQLite on the Docker volume is not backed up automatically; back up `/app/data` or use Postgres. |
-| Account self-service | Changing email or deleting an account isn't available yet. |
+| Account self-service | Changing the email address isn't available yet. |
 | Recess Relay | By design, anyone with a relay code can read it and add lines (rate-limited); don't put private information in a relay. |
 | Notes on the device | Local-first: notes are stored in the browser (IndexedDB) and readable by anyone using that browser profile. Signing out syncs, then clears them from the device. |
 | Folded notes | Anyone holding the full link can open the note once; share links privately. Unopened notes expire after `FOLD_TTL_DAYS` (default 7). |

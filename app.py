@@ -78,7 +78,12 @@ def create_app(config_name: str = None) -> Flask:
     @app.url_defaults
     def version_static_urls(endpoint, values):
         if endpoint == "static" and "filename" in values and "v" not in values:
-            values["v"] = static_file_version(app.static_folder, values["filename"])
+            path = os.path.join(app.static_folder, values["filename"])
+            try:
+                modified = os.stat(path).st_mtime_ns  # an edited file gets a new hash, even without a restart
+            except OSError:
+                modified = 0
+            values["v"] = static_file_version(app.static_folder, values["filename"], modified)
 
     # Initialize CSRF protection
     csrf.init_app(app)
@@ -168,8 +173,8 @@ OFFLINE_SHELLS = {"main.index", "main.view_stashes", "main.pass_hub", "main.loun
 
 
 @functools.lru_cache(maxsize=None)
-def static_file_version(static_folder: str, filename: str) -> str:
-    """Short content hash of a static file, for cache-busting URLs."""
+def static_file_version(static_folder: str, filename: str, modified: int = 0) -> str:
+    """Short content hash of a static file, for cache-busting URLs (cached per modification time)."""
     try:
         with open(os.path.join(static_folder, filename), "rb") as handle:
             return hashlib.sha256(handle.read()).hexdigest()[:10]

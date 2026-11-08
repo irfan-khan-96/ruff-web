@@ -169,6 +169,7 @@
                 ? `Stashed · ${ago(note.updated_at)}`
                 : `Stashed on this device · ${ago(note.updated_at)}. Sign in to sync.`);
             $("sheet-actions").hidden = false;
+            $("stash-button").textContent = "Save & close";  // offline, the page may be the blank-sheet copy
         } else {
             const draft = readJSON(DRAFT_KEY);
             if (draft && draft.text) {
@@ -417,23 +418,54 @@
             return note;
         }
 
+        /* Stashing files the note away and leaves a clean pad */
+        let stashing = false;
         async function stashNow() {
+            if (stashing) return;  // a double tap stashes once
+            stashing = true;
             clearTimeout(saveTimer);
-            const note = await saveNote();
-            if (!note) return;
-            if (!noteId) {
-                try { store?.removeItem(DRAFT_KEY); sessionStorage.setItem("ruff:toast", "Stashed."); } catch (e) { /* ignore */ }
-                if (Store.signedIn) await Store.sync();
-                window.location.assign(`/stashes/${note.id}`);
-                return;
+            saveTimer = null;
+            try {
+                const note = await saveNote();
+                if (!note) return;
+                if (noteId) {
+                    try { sessionStorage.setItem("ruff:toast", "Saved to your stash."); } catch (e) { /* ignore */ }
+                    if (Store.signedIn) await Store.sync();
+                    window.location.assign("/");
+                    return;
+                }
+                try { store?.removeItem(DRAFT_KEY); } catch (e) { /* ignore */ }
+                text.value = "";
+                tags.value = "";
+                countWords();
+                renderRoster();
+                queueDraw();
+                setStatus("");
+                toast(Store.signedIn ? "Stashed. Fresh page ready." : "Stashed on this device. Fresh page ready.");
+                renderRecent("");
+                text.focus();
+                if (Store.signedIn) Store.sync();
+            } finally {
+                stashing = false;
             }
-            if (Store.signedIn) await Store.sync();
         }
 
         form.addEventListener("submit", (event) => { event.preventDefault(); stashNow(); });
         text.addEventListener("input", changed);
         tags.addEventListener("input", changed);
-        window.addEventListener("beforeunload", () => { if (noteId && saveTimer) saveNote(); });
+        // Leaving or hiding the page (phones rarely fire beforeunload): save a pending edit now
+        const flush = () => {
+            if (!noteId || !saveTimer) return;
+            clearTimeout(saveTimer);
+            saveTimer = null;
+            saveNote();
+        };
+        window.addEventListener("pagehide", flush);
+        document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+        // Ctrl/⌘+S works from the tags too
+        tags.addEventListener("keydown", (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); stashNow(); }
+        });
 
         /* --- Actions on a stashed note --- */
         $("download-button")?.addEventListener("click", () => {
@@ -726,7 +758,7 @@
                 .map((t) => `[${t.done ? "x" : " "}] ${String(t.text).trim()}`);
             if (extra.length) body = `${body}\n\n${extra.join("\n")}`;
             if (!body.trim() || body.length > 50000) { skipped += 1; continue; }
-            const tags = parseTags([...(item.tags || []), item.collection_name || collections.get(item.collection_id) || ""].join(","));
+            const tags = parseTags([...(Array.isArray(item.tags) ? item.tags : String(item.tags || "").split(",")), item.collection_name || collections.get(item.collection_id) || ""].join(","));
             await Store.save({ id, text: body, tags });
             added += 1;
         }

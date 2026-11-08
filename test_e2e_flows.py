@@ -35,8 +35,13 @@ def _stash(page, text, tags=""):
     if tags:
         page.fill("#sheet-tags", tags)
     page.click("#stash-button")
-    page.wait_for_url(re.compile(r"/stashes/[0-9a-f-]{36}$"))
-    return page.url.rsplit("/", 1)[1]
+    expect(page.locator("#sheet-text")).to_have_value("")  # a clean pad once stashed
+    first = page.locator("#recent-list a").first
+    expect(first).to_have_text(text.split("\n")[0].strip())
+    note_id = first.get_attribute("href").rsplit("/", 1)[1]
+    page.goto(f"{page.url.split('/', 3)[0]}//{page.url.split('/', 3)[2]}/stashes/{note_id}")
+    expect(page.locator("#sheet-text")).to_have_value(text)
+    return note_id
 
 
 def _server_note(live_server, note_id):
@@ -79,9 +84,13 @@ def test_sign_up_and_in_by_email_link(live_server, new_page):
 def test_write_and_stash_without_an_account(live_server, new_page):
     page = new_page()
     page.goto(live_server.url + "/")
-    note_id = _stash(page, "Things to bring\n[ ] Lunch", tags="trips")
-    expect(page.locator(".toast")).to_contain_text("Stashed.")
+    page.fill("#sheet-text", "Things to bring\n[ ] Lunch")
+    page.click("#stash-button")
+    expect(page.locator(".toast")).to_contain_text("Stashed on this device. Fresh page ready.")
+    note_id = page.locator("#recent-list a").first.get_attribute("href").rsplit("/", 1)[1]
+    page.goto(f"{live_server.url}/stashes/{note_id}")
     expect(page.locator("#sheet-status")).to_contain_text("Sign in to sync")
+    page.fill("#sheet-tags", "trips")
 
     page.goto(f"{live_server.url}/stashes")
     expect(page.locator(".stash-card-title")).to_have_text("Things to bring")
@@ -167,8 +176,42 @@ def test_sheet_lists_roster_and_shortcut(live_server, new_page):
     expect(page.locator("#word-count")).to_contain_text("words")
 
     text.press("Control+s")
-    page.wait_for_url(re.compile(r"/stashes/[0-9a-f-]{36}$"))
+    expect(text).to_have_value("")
+    expect(page.locator(".toast")).to_contain_text("Fresh page ready")
+    page.locator("#recent-list a", has_text="Kickball plan").click()
     expect(page.locator("#sheet-text")).to_have_value(re.compile(r"^Kickball plan\n\[x\] Find the ball"))
+
+
+def test_stashing_leaves_a_clean_pad(live_server, new_page):
+    page = new_page()
+    page.goto(live_server.url + "/")
+    page.fill("#sheet-text", "Lunch money\n[ ] ask mum")
+    page.fill("#sheet-tags", "school")
+    page.click("#stash-button")
+    expect(page.locator("#sheet-text")).to_have_value("")
+    expect(page.locator("#sheet-tags")).to_have_value("")
+    expect(page.locator(".todo-box")).to_have_count(0)
+    expect(page.locator("#roster")).to_be_hidden()
+    expect(page).to_have_url(live_server.url + "/")
+    page.reload()  # the draft went with it
+    expect(page.locator("#sheet-text")).to_have_value("")
+
+    # A double tap stashes once
+    page.fill("#sheet-text", "Only once")
+    page.locator("#stash-button").dblclick()
+    expect(page.locator("#sheet-text")).to_have_value("")
+    page.goto(live_server.url + "/stashes")
+    expect(page.locator(".stash-card", has_text="Only once")).to_have_count(1)
+
+    # Saving an opened stash closes it, back to a clean pad
+    page.locator(".stash-card", has_text="Lunch money").click()
+    page.fill("#sheet-text", "Lunch money\n[x] ask mum")
+    page.get_by_role("button", name="Save & close").click()
+    page.wait_for_url(live_server.url + "/")
+    expect(page.locator("#sheet-text")).to_have_value("")
+    expect(page.locator(".toast")).to_contain_text("Saved to your stash")
+    page.locator("#recent-list a", has_text="Lunch money").click()
+    expect(page.locator("#sheet-text")).to_have_value("Lunch money\n[x] ask mum")
 
 
 def test_todo_boxes_on_the_sheet(live_server, new_page):

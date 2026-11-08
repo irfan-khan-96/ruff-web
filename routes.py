@@ -62,7 +62,11 @@ _default_limits = [
 ]
 limiter = Limiter(
     key_func=get_remote_address,
+    # The default applies to actions (POST) without a limit of their own. Pages,
+    # health probes and the service worker are never limited: browsing and the
+    # container health check would otherwise run out within the hour.
     default_limits=_default_limits,
+    default_limits_exempt_when=lambda: request.method in ("GET", "HEAD", "OPTIONS"),
     storage_uri=os.getenv("RATELIMIT_STORAGE_URL", "memory://"),
 )
 
@@ -579,7 +583,7 @@ def _keep_other_copy(text: str, tags: list, when) -> Stash:
 
 @bp.route("/api/sync", methods=["POST"])
 @login_required
-@limiter.limit("240 per hour")
+@limiter.limit("30 per minute")  # autosave syncs after each pause in typing
 def sync():
     """
     Two-way sync for one device. The device sends its changes since its last
@@ -923,8 +927,8 @@ def relay_home():
             flash("Log in to start a relay. Anyone can join one.", "warning")
             return redirect(url_for("main.login"))
 
-        title = (request.form.get("title") or "").strip() or "Recess Relay"
-        prompt = (request.form.get("prompt") or "").strip()
+        title = (request.form.get("title") or "").strip()[:200] or "Recess Relay"
+        prompt = (request.form.get("prompt") or "").strip()[:2000]
         max_entries_raw = (request.form.get("max_entries") or "").strip()
         try:
             max_entries = int(max_entries_raw) if max_entries_raw else 8

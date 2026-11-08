@@ -20,7 +20,7 @@
                 <label for="sheet-tags" class="sr-only">Tags</label>
                 <input id="sheet-tags" name="tags" class="sheet-tags" placeholder="#tags, comma separated">
                 <button type="button" class="btn btn-quiet" id="roster-add" title="Add a to-do (or type [ ] at the start of a line)"><span class="todo-icon" aria-hidden="true"></span>To-do</button>
-                <button type="submit" class="btn" id="stash-button">{{ "Save" if stash_id else "Stash it" }}</button>
+                <button type="submit" class="btn" id="stash-button">{{ "Save &amp; close" if stash_id else "Stash it" }}</button>
             </div>
             <div class="sheet-status">
                 <span id="sheet-status" aria-live="polite"></span>

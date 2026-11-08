@@ -195,3 +195,37 @@ def test_service_worker_is_never_long_cached(app):
     response = app.test_client().get("/sw.js")
     assert response.status_code == 200 and b"X-Offline-Shell" in response.data
     assert "max-age=0" in response.headers.get("Cache-Control", "") or "no-cache" in response.headers.get("Cache-Control", "")
+
+
+# Rate limits and inputs -----------------------------------------------------------
+
+def test_pages_and_health_probes_are_never_rate_limited(app):
+    from routes import limiter
+    limiter.enabled = True
+    try:
+        client = app.test_client()
+        for path in ("/", "/stashes", "/healthz", "/readyz", "/sw.js"):
+            codes = {client.get(path).status_code for _ in range(60)}  # over the 50/hour default
+            assert 429 not in codes, path
+    finally:
+        limiter.enabled = app.config.get("RATELIMIT_ENABLED", True)
+
+
+def test_a_long_relay_title_is_trimmed_to_fit(app, client):
+    response = client.post("/relay", data={"action": "start", "title": "T" * 500, "prompt": "p" * 5000})
+    assert response.status_code == 302
+    relay = RelaySession.query.one()
+    assert len(relay.title) == 200 and len(relay.prompt) == 2000
+
+
+def test_static_urls_change_when_a_file_changes(app, tmp_path):
+    from flask import url_for
+    app.static_folder = str(tmp_path)
+    (tmp_path / "x.css").write_text("a")
+    with app.test_request_context():
+        first = url_for("static", filename="x.css")
+    import os, time
+    (tmp_path / "x.css").write_text("b")
+    os.utime(tmp_path / "x.css", ns=(time.time_ns() + 10**9, time.time_ns() + 10**9))
+    with app.test_request_context():
+        assert url_for("static", filename="x.css") != first
