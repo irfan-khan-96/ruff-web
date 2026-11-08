@@ -1,7 +1,8 @@
 """
 Browser end-to-end tests of the main flows: passwordless sign-in, the
 local-first sheet (works signed out and offline, syncs across devices),
-folded notes, the stash list, backups and Recess Relay.
+folded notes, the stash list, backups, opening offline, passkeys,
+deleting an account and Recess Relay.
 
 Run against the real app with CSRF on (see conftest.py). Skipped when
 Playwright is not installed.
@@ -124,6 +125,24 @@ def test_edits_offline_then_sync(live_server, new_page):
     page.context.set_offline(False)
     page.evaluate("window.dispatchEvent(new Event('online'))")
     assert _eventually(lambda: _server_note(live_server, note_id)[0] == "Field trip\nBring a jacket")
+
+
+def test_opens_offline_after_a_visit(live_server, new_page):
+    page = new_page()
+    page.goto(live_server.url + "/")
+    page.wait_for_function("navigator.serviceWorker && navigator.serviceWorker.controller")
+    note_id = _stash(page, "Offline plan\n[ ] snacks")
+    page.goto(live_server.url + "/stashes")  # visits made with the worker in charge are kept
+    page.goto(live_server.url + "/")
+
+    page.context.set_offline(True)
+    page.goto(f"{live_server.url}/stashes/{note_id}")
+    expect(page.locator("#sheet-text")).to_have_value("Offline plan\n[ ] snacks")
+    page.goto(live_server.url + "/stashes")
+    expect(page.locator(".stash-card")).to_contain_text("Offline plan")
+    page.goto(live_server.url + "/relay")  # not kept: a friendly offline page instead
+    expect(page.locator("h1")).to_have_text("You're offline")
+    page.context.set_offline(False)
 
 
 def test_sheet_lists_roster_and_shortcut(live_server, new_page):
@@ -259,6 +278,76 @@ def test_signing_out_clears_this_device(live_server, new_page):
     page.goto(f"{live_server.url}/stashes")
     expect(page.locator("#stash-empty")).to_be_visible()
     assert _server_note(live_server, note_id)[0] == "Private plans"  # still safe in the account
+
+
+def test_signing_out_clears_offline_copies(live_server, new_page):
+    username = live_server.create_user()
+    page = new_page()
+    login(page, live_server, username)
+    page.wait_for_function("navigator.serviceWorker && navigator.serviceWorker.controller")
+    page.goto(f"{live_server.url}/lounge")
+    page.wait_for_function("caches.keys().then((k) => k.length > 0)")
+    page.get_by_role("button", name="Sign out", exact=True).click()
+    expect(page.locator(".toast")).to_contain_text("Logged out")
+    cached = page.evaluate("""async () => {
+        const pages = await caches.open("ruff-v6-pages");
+        return (await pages.keys()).map((r) => new URL(r.url).pathname);
+    }""")
+    assert "/lounge" not in cached  # the signed-in Lounge (with the email) is gone
+
+
+def test_delete_account(live_server, new_page):
+    from models import User
+    username = live_server.create_user()
+    page = new_page()
+    login(page, live_server, username)
+    note_id = _stash(page, "Secret diary")
+    assert _eventually(lambda: _server_note(live_server, note_id))
+
+    page.goto(f"{live_server.url}/lounge#delete")
+    page.fill("#confirm-email", f"{username}@example.com")
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.get_by_role("button", name="Delete my account").click()
+    expect(page.locator(".toast")).to_contain_text("account and notes are gone")
+    assert live_server.query(lambda: User.query.filter_by(username=username).count()) == 0
+    assert _server_note(live_server, note_id) is None
+    page.goto(f"{live_server.url}/stashes")
+    expect(page.locator("#stash-empty")).to_be_visible()  # gone from the device too
+
+
+def test_add_a_passkey_then_sign_in_with_it(live_server, new_page):
+    from types import SimpleNamespace
+    # Passkeys need a domain name (not an IP address): use localhost
+    site = SimpleNamespace(url=live_server.url.replace("127.0.0.1", "localhost"), link_for=live_server.link_for)
+    username = live_server.create_user()
+    page = new_page()
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("WebAuthn.enable")
+    cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {
+        "protocol": "ctap2", "transport": "internal", "hasResidentKey": True,
+        "hasUserVerification": True, "isUserVerified": True, "automaticPresenceSimulation": True,
+    }})
+
+    login(page, site, username)
+    page.goto(f"{site.url}/lounge#passkeys")
+    page.click("#passkey-add")
+    expect(page.locator(".toast")).to_contain_text("Passkey added")
+    expect(page.locator(".passkey-list li")).to_have_count(1)
+
+    page.get_by_role("button", name="Sign out", exact=True).click()
+    expect(page.locator(".toast")).to_contain_text("Logged out")
+    page.click("#passkey-signin")
+    page.wait_for_url(f"{site.url}/")
+    expect(page.locator(".toast")).to_contain_text(f"Welcome back, {username}")
+
+    # Removing it: signing in with it stops working
+    page.goto(f"{site.url}/lounge#passkeys")
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator(".passkey-list").get_by_role("button", name="Remove").click()
+    expect(page.locator(".toast")).to_contain_text("Passkey removed")
+    page.get_by_role("button", name="Sign out", exact=True).click()
+    page.click("#passkey-signin")
+    expect(page.locator("#passkey-error")).to_contain_text("isn't set up here")
 
 
 def test_relay_owner_and_guest(live_server, new_page):

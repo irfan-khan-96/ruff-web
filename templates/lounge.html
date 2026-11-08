@@ -38,6 +38,29 @@
         {% endif %}
     </section>
 
+    {% if g.user %}
+    <section class="card" id="passkeys" aria-labelledby="passkeys-title">
+        <h2 id="passkeys-title">Passkeys</h2>
+        <p>Sign in with your fingerprint, face or screen lock instead of waiting for an email.</p>
+        {% if passkeys %}
+        <ul class="passkey-list">
+            {% for key in passkeys %}
+            <li>
+                <span>Added {{ key.created_at.day }} {{ key.created_at.strftime('%b %Y') }}{% if key.last_used_at %} <span class="muted">· last used {{ key.last_used_at.day }} {{ key.last_used_at.strftime('%b %Y') }}</span>{% endif %}</span>
+                <form method="POST" action="{{ url_for('main.passkey_delete', passkey_id=key.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-quiet" data-confirm="Remove this passkey? You can still sign in by email.">Remove</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        <p><button type="button" class="btn btn-quiet" id="passkey-add">Add a passkey</button></p>
+        <p class="muted" id="passkey-unsupported" hidden>This browser can't make passkeys.</p>
+        <p class="field-errors" id="passkey-error" role="alert" hidden></p>
+    </section>
+    {% endif %}
+
     <section class="card" aria-labelledby="theme-title">
         <h2 id="theme-title">Look</h2>
         <fieldset class="options plain-fieldset">
@@ -61,6 +84,21 @@
             <button type="submit" class="btn">Restore</button>
         </form>
     </section>
+
+    {% if g.user %}
+    <section class="card" id="delete" aria-labelledby="delete-title">
+        <h2 id="delete-title">Delete account</h2>
+        <p>Deletes your account and everything in it: notes, folded notes, relays you started and passkeys. This can't be undone, so download a backup first if you want one.</p>
+        <form method="POST" action="{{ url_for('main.delete_account') }}" data-signout data-wipe>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="field">
+                <label for="confirm-email">Type your email to confirm</label>
+                <input id="confirm-email" name="confirm_email" type="email" class="input" autocomplete="off" required>
+            </div>
+            <button type="submit" class="btn btn-danger" data-confirm="Delete your account and all your notes for good?">Delete my account</button>
+        </form>
+    </section>
+    {% endif %}
 
     <section class="card about" aria-labelledby="about-title">
         <h2 id="about-title">About</h2>

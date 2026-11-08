@@ -49,6 +49,11 @@ class Config:
     # log. Never enable in production: logs would hold live sign-in links.
     MAIL_TO_LOG = os.getenv("MAIL_TO_LOG", "0") == "1"
 
+    # Passkeys: the site's domain (RP ID) and origin browsers must report.
+    # Empty = the host of each request; set both in production.
+    WEBAUTHN_RP_ID = os.getenv("WEBAUTHN_RP_ID", "")
+    WEBAUTHN_ORIGIN = os.getenv("WEBAUTHN_ORIGIN", "")
+
     # Folded notes expire unopened after this many days
     FOLD_TTL_DAYS = int(os.getenv("FOLD_TTL_DAYS", "7"))
 

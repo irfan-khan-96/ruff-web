@@ -11,6 +11,8 @@
         {{ form.hidden_tag() }}
         {{ field(form.email, autocomplete="email", type="email") }}
         <button type="submit" id="submit" class="btn btn-block">Email me a link</button>
+        <button type="button" id="passkey-signin" class="btn btn-quiet btn-block" hidden>Sign in with a passkey</button>
+        <p class="field-errors" id="passkey-error" role="alert" hidden></p>
     </form>
     <p class="auth-links">You can write without an account. Notes stay on this device until you sign in.</p>
 </div>

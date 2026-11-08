@@ -10,6 +10,7 @@ import re
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from utils import utcnow
 from functools import wraps
@@ -19,10 +20,19 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy import delete as sa_delete, func, text
 from werkzeug.exceptions import HTTPException
+import webauthn
+from webauthn.helpers import bytes_to_base64url
+from webauthn.helpers.exceptions import WebAuthnException
+from webauthn.helpers.structs import (
+    AuthenticatorSelectionCriteria,
+    PublicKeyCredentialDescriptor,
+    ResidentKeyRequirement,
+    UserVerificationRequirement,
+)
 from io import BytesIO
 
 from forms import EmailForm, NameForm
-from models import db, FoldedNote, RelayEntry, RelaySession, Stash, StashTombstone, Tag, User
+from models import db, FoldedNote, Passkey, RelayEntry, RelaySession, Stash, StashTombstone, Tag, User, stash_tags
 from export_import import (
     export_to_json,
     export_stash_to_text,
@@ -277,6 +287,143 @@ def logout_everywhere():
 
 
 # ============================================================================
+# Passkeys (WebAuthn): sign in with the device's screen lock, no email needed.
+# Added from the Teachers Lounge once signed in; email links still work.
+# ============================================================================
+
+PASSKEY_CHALLENGE = "passkey_challenge"
+MAX_PASSKEYS = 10
+
+
+def _relying_party():
+    """(RP ID, origin) the browser must have used: WEBAUTHN_RP_ID / WEBAUTHN_ORIGIN, else this host."""
+    rp_id = current_app.config.get("WEBAUTHN_RP_ID") or request.host.split(":")[0]
+    origin = current_app.config.get("WEBAUTHN_ORIGIN") or request.host_url.rstrip("/")
+    return rp_id, origin
+
+
+def _new_challenge(purpose: str, options) -> dict:
+    """Remember this ceremony's challenge (single use) and return the options as JSON."""
+    session[PASSKEY_CHALLENGE] = {"purpose": purpose, "challenge": bytes_to_base64url(options.challenge)}
+    return json.loads(webauthn.options_to_json(options))
+
+
+def _take_challenge(purpose: str):
+    """The pending challenge for this purpose, removed so it can't be replayed."""
+    pending = session.pop(PASSKEY_CHALLENGE, None) or {}
+    if pending.get("purpose") != purpose:
+        return None
+    return webauthn.base64url_to_bytes(pending["challenge"])
+
+
+@bp.route("/passkeys/options", methods=["POST"])
+@login_required
+@limiter.limit("20 per hour")
+def passkey_register_options():
+    rp_id, _ = _relying_party()
+    existing = Passkey.query.filter_by(user_id=g.user.id).all()
+    if len(existing) >= MAX_PASSKEYS:
+        return {"error": f"Up to {MAX_PASSKEYS} passkeys. Remove one first."}, 400
+    options = webauthn.generate_registration_options(
+        rp_id=rp_id,
+        rp_name=current_app.config["APP_NAME"],
+        user_id=str(g.user.id).encode(),
+        user_name=g.user.email,
+        user_display_name=g.user.username,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            resident_key=ResidentKeyRequirement.REQUIRED,  # signs in without typing an email
+            user_verification=UserVerificationRequirement.PREFERRED,
+        ),
+        exclude_credentials=[
+            PublicKeyCredentialDescriptor(id=webauthn.base64url_to_bytes(key.credential_id)) for key in existing
+        ],
+    )
+    return _new_challenge("register", options)
+
+
+@bp.route("/passkeys", methods=["POST"])
+@login_required
+@limiter.limit("20 per hour")
+def passkey_register():
+    challenge = _take_challenge("register")
+    if challenge is None:
+        return {"error": "That took too long. Try again."}, 400
+    rp_id, origin = _relying_party()
+    try:
+        verified = webauthn.verify_registration_response(
+            credential=request.get_json(silent=True) or {},
+            expected_challenge=challenge,
+            expected_rp_id=rp_id,
+            expected_origin=origin,
+        )
+    except (WebAuthnException, ValueError, KeyError, TypeError) as e:
+        security_log.warning("Passkey registration failed for user_id=%s: %s", g.user.id, e)
+        return {"error": "Your device didn't make a passkey. Try again?"}, 400
+    credential_id = bytes_to_base64url(verified.credential_id)
+    if Passkey.query.filter_by(credential_id=credential_id).first():
+        return {"error": "That passkey is already added."}, 400
+    db.session.add(Passkey(user_id=g.user.id, credential_id=credential_id,
+                           public_key=verified.credential_public_key, sign_count=verified.sign_count))
+    db.session.commit()
+    security_log.info("Passkey added: user_id=%s", g.user.id)
+    flash("Passkey added. Next time, sign in with your screen lock.", "success")
+    return {"ok": True}
+
+
+@bp.route("/passkeys/<int:passkey_id>/delete", methods=["POST"])
+@login_required
+def passkey_delete(passkey_id):
+    key = Passkey.query.filter_by(id=passkey_id, user_id=g.user.id).first_or_404()
+    db.session.delete(key)
+    db.session.commit()
+    security_log.info("Passkey removed: user_id=%s", g.user.id)
+    flash("Passkey removed.", "info")
+    return redirect(url_for("main.lounge"))
+
+
+@bp.route("/login/passkey/options", methods=["POST"])
+@limiter.limit("30 per minute")
+def passkey_login_options():
+    rp_id, _ = _relying_party()
+    options = webauthn.generate_authentication_options(
+        rp_id=rp_id, user_verification=UserVerificationRequirement.PREFERRED,
+    )
+    return _new_challenge("login", options)
+
+
+@bp.route("/login/passkey", methods=["POST"])
+@limiter.limit("10 per minute")
+def passkey_login():
+    challenge = _take_challenge("login")
+    credential = request.get_json(silent=True) or {}
+    key = Passkey.query.filter_by(credential_id=str(credential.get("id", ""))).first() if challenge else None
+    if key is None:
+        security_log.warning("Passkey sign-in refused (unknown passkey or no challenge) from %s", request.remote_addr)
+        return {"error": "That passkey isn't set up here. Sign in by email, then add it in the Lounge."}, 400
+    rp_id, origin = _relying_party()
+    try:
+        verified = webauthn.verify_authentication_response(
+            credential=credential,
+            expected_challenge=challenge,
+            expected_rp_id=rp_id,
+            expected_origin=origin,
+            credential_public_key=key.public_key,
+            credential_current_sign_count=key.sign_count,
+        )
+    except (WebAuthnException, ValueError, KeyError, TypeError) as e:
+        security_log.warning("Passkey sign-in failed for user_id=%s from %s: %s", key.user_id, request.remote_addr, e)
+        return {"error": "That didn't work. Try again, or sign in by email."}, 400
+    key.sign_count = verified.new_sign_count
+    key.last_used_at = utcnow()
+    user = db.session.get(User, key.user_id)
+    db.session.commit()
+    start_session(session, user)
+    security_log.info("Signed in with a passkey: user_id=%s from %s", user.id, request.remote_addr)
+    flash(f"Welcome back, {user.username}.", "success")
+    return {"redirect": url_for("main.index")}
+
+
+# ============================================================================
 # The sheet (local-first)
 # Notes live in the browser (IndexedDB) and work offline and without an
 # account. Signed-in devices sync through /api/sync; these pages are shells
@@ -398,13 +545,36 @@ def _ms_to_utc(value):
     return min(moment, utcnow())
 
 
+def _ms(moment) -> int:
+    """Naive UTC datetime -> ms since epoch: a note's version as devices see it."""
+    return round(moment.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
 def _sync_payload(item) -> dict:
     return {
         "id": item.id,
         "text": item.body,
         "tags": sorted(t.name for t in item.tags),
-        "updated_at": int(item.updated_at.replace(tzinfo=timezone.utc).timestamp() * 1000),
+        "updated_at": _ms(item.updated_at),
     }
+
+
+OTHER_COPY = " (other copy)"
+
+
+def _keep_other_copy(text: str, tags: list, when) -> Stash:
+    """Save the losing side of a two-device edit as a note of its own."""
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if line.strip():
+            lines[i] = line.rstrip() + OTHER_COPY
+            break
+    copy = Stash(body="\n".join(lines), id=str(uuid4()), user_id=g.user.id)
+    copy.updated_at = when
+    db.session.add(copy)
+    for name in tags:
+        copy.add_tag(name)
+    return copy
 
 
 @bp.route("/api/sync", methods=["POST"])
@@ -413,9 +583,14 @@ def _sync_payload(item) -> dict:
 def sync():
     """
     Two-way sync for one device. The device sends its changes since its last
-    sync ({id, text, tags, updated_at, deleted}); the newer version of each
-    note wins. The reply holds every change this device hasn't seen since
-    `cursor` (server write times), plus a new cursor.
+    sync ({id, base, text, tags, updated_at, deleted}), where `base` is the
+    server version the change was made from. Nothing is lost when devices
+    disagree: if a note changed elsewhere since `base`, both versions are kept
+    (the older one as "(other copy)"), and a deletion never removes an edit it
+    hadn't seen. Changes without a base fall back to newest-edit-wins.
+
+    The reply holds every change this device hasn't seen since `cursor`
+    (server write times), the new version of each accepted note, and a new cursor.
     """
     data = request.get_json(silent=True) or {}
     changes = data.get("changes") or []
@@ -428,6 +603,8 @@ def sync():
 
     started = utcnow()
     accepted, rejected = [], []
+    touched = {}  # note id -> Stash: sent back with its new version
+    conflicts = 0
     for change in changes:
         if not isinstance(change, dict) or not UUID_RE.match(str(change.get("id", ""))):
             rejected.append({"id": change.get("id") if isinstance(change, dict) else None, "reason": "bad id"})
@@ -442,11 +619,20 @@ def sync():
         if (item and item.user_id != g.user.id) or (tomb and tomb.user_id != g.user.id):
             rejected.append({"id": note_id, "reason": "not yours"})
             continue
+        try:
+            base = int(change["base"]) if change.get("base") is not None else None
+        except (TypeError, ValueError):
+            base = None
+        # Did the note change on another device since this one last saw it?
+        stale = item is not None and base is not None and _ms(item.updated_at) != base
+        newer_here = item is not None and base is None and item.updated_at > when
 
         if change.get("deleted"):
-            if item and item.updated_at <= when:
+            if item and (stale or newer_here):
+                touched[note_id] = item  # keep the edit this device never saw
+            elif item:
                 toss(item)
-            elif not item and not tomb:
+            elif not tomb:
                 db.session.add(StashTombstone(stash_id=note_id, user_id=g.user.id, deleted_at=started))
             accepted.append(note_id)
             continue
@@ -457,23 +643,44 @@ def sync():
         if error:
             rejected.append({"id": note_id, "reason": error})
             continue
-        if item and item.updated_at > when:
+        if newer_here:
             accepted.append(note_id)  # the server's copy is newer; the device gets it below
+            touched[note_id] = item
             continue
+        if stale:
+            same = item.body == text and sorted(t.name for t in item.tags) == sorted(tags)
+            if not same:
+                conflicts += 1
+                if item.updated_at > when:
+                    # The other device's edit is newer: it stays, this one becomes the copy
+                    copy = _keep_other_copy(text, tags, when)
+                    touched[copy.id] = copy
+                    touched[note_id] = item
+                    accepted.append(note_id)
+                    continue
+                copy = _keep_other_copy(item.body, sorted(t.name for t in item.tags), item.updated_at)
+                touched[copy.id] = copy
+            else:
+                touched[note_id] = item
+                accepted.append(note_id)
+                continue
         if tomb:
-            if tomb.deleted_at > when:
+            if base is None and tomb.deleted_at > when:
                 accepted.append(note_id)  # deleted after this edit was made
                 continue
-            db.session.delete(tomb)  # edited after the deletion: bring it back
+            db.session.delete(tomb)  # an edit the deleting device never saw: bring it back
         if item is None:
             item = Stash(body=text, id=note_id, user_id=g.user.id)
+            item.updated_at = when
             db.session.add(item)
         else:
             item.set_text(text)
-        item.updated_at = when
+            # Every write is a new version, even if this device's clock is behind
+            item.updated_at = max(when, item.updated_at + timedelta(milliseconds=1))
         item.tags.clear()
         for name in tags:
             item.add_tag(name)
+        touched[note_id] = item
         accepted.append(note_id)
     db.session.commit()
 
@@ -484,13 +691,17 @@ def sync():
         tombs = tombs.filter(StashTombstone.deleted_at >= cursor)
     else:
         tombs = tombs.filter(db.false())  # a first sync only needs what exists
+    changed = {item.id: item for item in stashes.all()}
+    changed.update({note_id: item for note_id, item in touched.items() if note_id not in changed})
     return {
         # A few seconds of overlap so writes racing this request aren't missed
         "cursor": (started - timedelta(seconds=5)).isoformat(),
-        "stashes": [_sync_payload(item) for item in stashes.all()],
+        "stashes": [_sync_payload(item) for item in changed.values()],
         "deleted": [tomb.stash_id for tomb in tombs.all()],
         "accepted": accepted,
+        "versions": {note_id: _ms(item.updated_at) for note_id, item in touched.items() if note_id in accepted},
         "rejected": rejected,
+        "conflicts": conflicts,
     }, 200
 
 
@@ -570,7 +781,8 @@ def pass_hub():
 def lounge():
     """Teachers Lounge: theme, backup, account, about."""
     form = NameForm(obj=g.user, current_user=g.user) if g.user else None
-    return render_template("lounge.html", form=form)
+    passkeys = Passkey.query.filter_by(user_id=g.user.id).order_by(Passkey.created_at).all() if g.user else []
+    return render_template("lounge.html", form=form, passkeys=passkeys)
 
 
 @bp.route("/lounge/name", methods=["POST"])
@@ -584,6 +796,36 @@ def change_name():
     else:
         flash(" ".join(form.username.errors) or "That didn't work. Try again?", "error")
     return redirect(url_for("main.lounge"))
+
+
+@bp.route("/account/delete", methods=["POST"])
+@login_required
+@limiter.limit("5 per hour")
+def delete_account():
+    """
+    Delete the account and everything it owns: notes, folded notes, relays
+    it started, passkeys. Lines it wrote in other people's relays stay, under
+    its name only, as part of their story. The browser clears the device.
+    """
+    user = g.user
+    if (request.form.get("confirm_email") or "").strip().lower() != user.email.lower():
+        flash("Type your email address to confirm.", "error")
+        return redirect(url_for("main.lounge") + "#delete")
+    # Explicit deletes: SQLite doesn't enforce ON DELETE CASCADE by default
+    note_ids = db.session.query(Stash.id).filter(Stash.user_id == user.id).scalar_subquery()
+    db.session.execute(sa_delete(stash_tags).where(stash_tags.c.stash_id.in_(note_ids)))
+    relay_ids = db.session.query(RelaySession.id).filter(RelaySession.owner_id == user.id).scalar_subquery()
+    db.session.execute(sa_delete(RelayEntry).where(RelayEntry.session_id.in_(relay_ids)))
+    for model, column in ((Stash, Stash.user_id), (StashTombstone, StashTombstone.user_id),
+                          (FoldedNote, FoldedNote.sender_id), (RelaySession, RelaySession.owner_id),
+                          (Passkey, Passkey.user_id)):
+        db.session.execute(sa_delete(model).where(column == user.id))
+    db.session.execute(sa_delete(User).where(User.id == user.id))
+    db.session.commit()
+    security_log.info("Account deleted: user_id=%s from %s", user.id, request.remote_addr)
+    session.clear()
+    flash("Your account and notes are gone. Thanks for playing.", "info")
+    return redirect(url_for("main.login"))
 
 
 # ============================================================================

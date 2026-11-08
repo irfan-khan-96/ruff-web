@@ -10,7 +10,8 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 
 ### A01 Broken Access Control
 - Every stash, tag, export and fold action is filtered by the logged-in user; another user's stash returns 404, and saving over it is refused (tested for every route).
-- Relay sessions can only be closed by their owner.
+- Relay sessions can only be closed by their owner, and passkeys removed only by theirs.
+- Deleting an account (typing the email to confirm) removes its notes, tombstones, folded notes, relays and passkeys; the browser clears the device.
 - Folded notes: only signed-in users can fold; each note is handed over exactly once (an atomic delete-and-return) and expires unopened after `FOLD_TTL_DAYS`.
 - CSRF tokens on every form and JSON request; logout is a CSRF-protected POST.
 
@@ -47,11 +48,12 @@ Last reviewed: 2026-10-29. This is a self-assessment against the [OWASP Top 10:2
 - Requesting a link gives the same answer whether or not the address has an account (no enumeration). Links are limited to 5 a minute per IP and 10 an hour per address.
 - Opening a link only shows a confirmation button; signing in is a separate POST, so email scanners that pre-open links can't use them up.
 - Sessions are renewed on sign-in (no fixation); "Sign out everywhere" invalidates every session at once.
+- Passkeys (WebAuthn, via `webauthn`): phishing-resistant, the server stores only public keys. Challenges are single-use and bound to their purpose (adding vs signing in); the relying party is pinned with `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGIN`; sign-in attempts are limited to 10 a minute per IP.
 
 ### A08 Software or Data Integrity Failures
 - No CDN scripts (everything is self-hosted); SHA-pinned CI actions.
 - JSON imports are parsed as plain data and validated (types, lengths); nothing is deserialised into code.
-- The service worker caches only same-origin static files, never pages with user data.
+- The service worker keeps same-origin static files and the empty page shells (marked `X-Offline-Shell` by the server; never pages carrying one-off messages) for opening offline. Notes are never in them; signing out or deleting the account deletes these caches.
 
 ### A09 Security Logging and Alerting Failures
 - Security events are logged to the `ruff.security` logger: sign-in link requests, unusable (expired, reused or forged) links, sign-ins, sign-outs everywhere, folded notes opened, and rate-limit hits.

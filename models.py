@@ -312,3 +312,21 @@ class FoldedNote(db.Model):
         count = cls.query.filter(cls.expires_at < utcnow()).delete(synchronize_session=False)
         db.session.commit()
         return count
+
+
+class Passkey(db.Model):
+    """
+    A passkey (WebAuthn credential): signs in with the device's screen lock,
+    no email needed. The server keeps only the public key.
+    """
+
+    __tablename__ = "passkeys"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # base64url, as browsers report it
+    credential_id = db.Column(db.String(512), nullable=False, unique=True)
+    public_key = db.Column(db.LargeBinary, nullable=False)
+    sign_count = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    last_used_at = db.Column(db.DateTime, nullable=True)

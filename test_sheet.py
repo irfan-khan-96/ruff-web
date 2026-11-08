@@ -207,6 +207,68 @@ def test_sync_validates_every_change(client):
     assert client.post("/api/sync", json={"changes": [{}] * 501}, headers=JSON).status_code == 400
 
 
+def test_edits_on_two_devices_keep_both_versions(client):
+    note_id = str(uuid.uuid4())
+    base = sync(client, [{"id": note_id, "text": "Plan\nball", "tags": [], "updated_at": NOW()}])["versions"][note_id]
+    # Phone edits first, then the laptop (offline, still on the old version) edits too
+    phone = sync(client, [{"id": note_id, "base": base, "text": "Plan\nball, rope", "tags": [], "updated_at": NOW() + 10}])
+    assert phone["conflicts"] == 0
+    laptop = sync(client, [{"id": note_id, "base": base, "text": "Plan\nchalk", "tags": ["x"], "updated_at": NOW() + 20}])
+    assert laptop["conflicts"] == 1 and laptop["accepted"] == [note_id]
+    db.session.expire_all()
+    bodies = sorted(s.body for s in Stash.query.all())
+    assert bodies == ["Plan\nchalk", "Plan (other copy)\nball, rope"]
+    # The laptop learns the new version and gets the copy
+    assert laptop["versions"][note_id] == next(s["updated_at"] for s in laptop["stashes"] if s["id"] == note_id)
+    assert {s["text"] for s in laptop["stashes"]} == set(bodies)
+
+
+def test_older_edit_becomes_the_copy(client):
+    note_id = str(uuid.uuid4())
+    base = sync(client, [{"id": note_id, "text": "v1", "tags": [], "updated_at": NOW() - 60_000}])["versions"][note_id]
+    sync(client, [{"id": note_id, "base": base, "text": "newer", "tags": [], "updated_at": NOW()}])
+    reply = sync(client, [{"id": note_id, "base": base, "text": "older", "tags": [], "updated_at": NOW() - 30_000}])
+    assert reply["conflicts"] == 1
+    db.session.expire_all()
+    assert db.session.get(Stash, note_id).body == "newer"
+    assert sorted(s.body for s in Stash.query.all()) == ["newer", "older (other copy)"]
+
+
+def test_same_edit_on_two_devices_is_not_a_conflict(client):
+    note_id = str(uuid.uuid4())
+    base = sync(client, [{"id": note_id, "text": "v1", "tags": [], "updated_at": NOW()}])["versions"][note_id]
+    sync(client, [{"id": note_id, "base": base, "text": "v2", "tags": [], "updated_at": NOW() + 10}])
+    assert sync(client, [{"id": note_id, "base": base, "text": "v2", "tags": [], "updated_at": NOW() + 20}])["conflicts"] == 0
+    assert Stash.query.count() == 1
+
+
+def test_deleting_never_removes_an_unseen_edit(client):
+    note_id = str(uuid.uuid4())
+    base = sync(client, [{"id": note_id, "text": "v1", "tags": [], "updated_at": NOW()}])["versions"][note_id]
+    sync(client, [{"id": note_id, "base": base, "text": "v2", "tags": [], "updated_at": NOW() + 10}])
+    reply = sync(client, [{"id": note_id, "base": base, "deleted": True, "updated_at": NOW() + 20}])
+    assert reply["accepted"] == [note_id] and [s["text"] for s in reply["stashes"]] == ["v2"]
+    assert db.session.get(Stash, note_id).body == "v2"
+
+
+def test_an_edit_brings_back_a_note_deleted_elsewhere(client):
+    note_id = str(uuid.uuid4())
+    base = sync(client, [{"id": note_id, "text": "v1", "tags": [], "updated_at": NOW()}])["versions"][note_id]
+    sync(client, [{"id": note_id, "base": base, "deleted": True, "updated_at": NOW() + 10}])
+    assert db.session.get(Stash, note_id) is None
+    # The other device edited it before hearing about the deletion
+    sync(client, [{"id": note_id, "base": base, "text": "keep me", "tags": [], "updated_at": NOW() - 10}])
+    db.session.expire_all()
+    assert db.session.get(Stash, note_id).body == "keep me"
+
+
+def test_every_write_is_a_new_version_even_with_a_slow_clock(client):
+    note_id = str(uuid.uuid4())
+    base = sync(client, [{"id": note_id, "text": "v1", "tags": [], "updated_at": NOW()}])["versions"][note_id]
+    reply = sync(client, [{"id": note_id, "base": base, "text": "v2", "tags": [], "updated_at": NOW() - 3_600_000}])
+    assert reply["versions"][note_id] > base
+
+
 def test_sync_needs_an_account(app):
     assert app.test_client().post("/api/sync", json={}, headers=JSON).status_code == 401
 

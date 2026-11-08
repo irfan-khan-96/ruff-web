@@ -3,12 +3,12 @@
 A pocket notebook: jot things down, stash them, and pass notes like it's recess.
 
 ## Features
-- **Local-first:** notes live in your browser (IndexedDB) first, so writing, stashing, searching and backups work offline and without an account. Signing in syncs them across your devices (newest edit wins; deletions sync too). Notes written before signing in join your account.
-- **Passwordless:** sign in or sign up with an emailed link (works once, for 15 minutes). No passwords to remember, reset or leak. "Sign out everywhere" ends every session.
+- **Local-first:** notes live in your browser (IndexedDB) first, so writing, stashing, searching and backups work offline and without an account, and the app opens with no connection after one visit. Signing in syncs them across your devices. Nothing is lost when devices disagree: a note edited on two devices at once keeps both versions (the older one as "(other copy)"), and a deletion never removes an edit it hadn't seen. Notes written before signing in join your account.
+- **Passwordless:** sign in or sign up with an emailed link (works once, for 15 minutes), or with a passkey (fingerprint, face or screen lock) added in the Lounge. No passwords to remember, reset or leak. "Sign out everywhere" ends every session.
 - **Write:** one sheet. The first line is the title; `[ ]` lines are to-dos, shown as the Recess Roster. Lists continue on Enter; `Ctrl/⌘+S` stashes.
 - **Stash:** search and tag chips to find things again.
 - **Pass:** *Folded notes* (a link that opens once, then disappears; encrypted in your browser, so the server only ever holds ciphertext; hand it over in person with a QR code or send the link through any app), and Recess Relay (a story written one line each).
-- **Teachers Lounge:** your name, notebook / chalkboard / device theme, backup and restore, sign out.
+- **Teachers Lounge:** your name, passkeys, notebook / chalkboard / device theme, backup and restore, sign out, delete account.
 - Fast and phone-first: self-hosted fonts, no third-party requests, compressed and long-cached assets, bottom tab bar on phones, two-pane layout on tablets.
 - CSRF protection, rate limiting, security headers, health checks (see [SECURITY.md](SECURITY.md)).
 
@@ -53,7 +53,7 @@ python -m playwright install chromium
 python -m pytest
 ```
 The `test_e2e_*.py` files drive the real app in Chromium (shared fixtures in `conftest.py`):
-- `test_e2e_flows.py`: passwordless sign-up and sign-in, writing and stashing without an account, notes joining the account and reaching a second device, offline edits syncing later, the sheet (lists, Recess Roster, shortcut), search and tags, tossing, folded notes opening once, backup and restore, signing out clearing the device, Recess Relay with a guest
+- `test_e2e_flows.py`: passwordless sign-up and sign-in, writing and stashing without an account, notes joining the account and reaching a second device, offline edits syncing later, the sheet (lists, Recess Roster, shortcut), search and tags, tossing, folded notes opening once, backup and restore, opening offline, passkeys (with a virtual authenticator), signing out clearing the device, deleting an account, Recess Relay with a guest
 - `test_e2e_visual.py`: contrast on gradient controls, and layout on phones, tablets and desktop (no sideways scrolling, 44px tap targets)
 - `test_e2e_a11y.py`: an axe-core accessibility audit of every page in light and dark themes
 
@@ -62,7 +62,7 @@ They need network access (axe-core loads from a CDN) and are skipped if Playwrig
 GitHub Actions runs all of it on Python 3.12 and 3.14, applies the migrations to PostgreSQL (up, down and up again), runs the production image read-only and checks its health check and graceful shutdown, and audits every locked dependency for known vulnerabilities.
 
 ## Configuration
-Everything is configured through environment variables; [.env.example](.env.example) lists and explains each one. In production, `SECRET_KEY` and `SECURITY_PASSWORD_SALT` are required (the app refuses to start without strong values), and so is SMTP: emailed links are the only way to sign in. Locally, without SMTP, sign-in links are printed in the server log (`FLASK_ENV=development`, or `MAIL_TO_LOG=1` as in `compose.yaml`).
+Everything is configured through environment variables; [.env.example](.env.example) lists and explains each one. In production, `SECRET_KEY` and `SECURITY_PASSWORD_SALT` are required (the app refuses to start without strong values), and so is SMTP: everyone's first sign-in is by emailed link. Set `WEBAUTHN_RP_ID` (your domain) and `WEBAUTHN_ORIGIN` (`https://` plus the domain) so passkeys are tied to your site rather than to whatever host a request names. Locally, without SMTP, sign-in links are printed in the server log (`FLASK_ENV=development`, or `MAIL_TO_LOG=1` as in `compose.yaml`).
 
 ## Dependencies
 `requirements.txt` lists the direct dependencies, pinned. `requirements.lock` pins every package, direct and indirect, as resolved in the production base image. Install with `-c requirements.lock` everywhere (the Dockerfile and CI do). After changing `requirements.txt`, regenerate the lock with `sh scripts/lock.sh` (needs Docker or Podman).

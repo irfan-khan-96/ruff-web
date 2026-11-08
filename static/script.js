@@ -88,6 +88,9 @@
 
     const Store = window.RuffStore;
     const $ = (id) => document.getElementById(id);
+    if (Store) Store.onSync((state) => {
+        if (state === "conflict") toast("A note changed on two devices at once. Both versions are kept.", "info");
+    });
     const b64 = {
         encode: (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
         decode: (text) => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)),
@@ -145,7 +148,8 @@
         const rosterList = $("roster-list");
         const ROSTER = /^(\s*(?:[-*]\s+)?)\[( |x|X)\]\s?/;
         const DRAFT_KEY = "ruff:sheet:new";
-        let noteId = form.dataset.stashId || "";
+        // Offline, a stash opens in the cached blank sheet: take its id from the URL
+        let noteId = form.dataset.stashId || (location.pathname.match(/^\/stashes\/([0-9a-f-]{36})$/) || [])[1] || "";
         let saveTimer = null;
         const setStatus = (message) => { status.textContent = message; };
         const syncedStatus = () => Store.signedIn ? "Stashed" : "Stashed on this device. Sign in to sync.";
@@ -489,6 +493,82 @@
         };
         download(`ruff-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(backup, null, 2), "application/json");
     });
+
+    /* --- Passkeys: add one in the Lounge, sign in with it on the login page --- */
+    const passkeysWork = Boolean(window.PublicKeyCredential && navigator.credentials);
+    const postJSON = async (url, body) => {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRFToken": document.body.dataset.csrf },
+            body: JSON.stringify(body || {}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "That didn't work. Try again?");
+        return data;
+    };
+    const credentialJSON = (cred) => {
+        const r = cred.response;
+        const response = { clientDataJSON: b64.encode(r.clientDataJSON) };
+        if (r.attestationObject) {
+            response.attestationObject = b64.encode(r.attestationObject);
+            response.transports = r.getTransports ? r.getTransports() : [];
+        } else {
+            response.authenticatorData = b64.encode(r.authenticatorData);
+            response.signature = b64.encode(r.signature);
+            if (r.userHandle) response.userHandle = b64.encode(r.userHandle);
+        }
+        return { id: cred.id, rawId: b64.encode(cred.rawId), type: cred.type, response,
+                 clientExtensionResults: cred.getClientExtensionResults(), authenticatorAttachment: cred.authenticatorAttachment };
+    };
+    const showPasskeyError = (message) => {
+        const box = $("passkey-error");
+        if (box) { box.textContent = message; box.hidden = !message; }
+    };
+    const cancelled = (e) => e && (e.name === "NotAllowedError" || e.name === "AbortError");
+
+    $("passkey-add")?.addEventListener("click", async (event) => {
+        if (!passkeysWork) return;
+        const button = event.currentTarget;
+        button.disabled = true;
+        showPasskeyError("");
+        try {
+            const options = await postJSON("/passkeys/options");
+            options.challenge = b64.decode(options.challenge);
+            options.user.id = b64.decode(options.user.id);
+            (options.excludeCredentials || []).forEach((c) => { c.id = b64.decode(c.id); });
+            const cred = await navigator.credentials.create({ publicKey: options });
+            await postJSON("/passkeys", credentialJSON(cred));
+            location.reload();
+        } catch (e) {
+            if (e && e.name === "InvalidStateError") showPasskeyError("This device already has a passkey here.");
+            else if (!cancelled(e)) showPasskeyError(e.message || "That didn't work. Try again?");
+            button.disabled = false;
+        }
+    });
+    if ($("passkey-add") && !passkeysWork) {
+        $("passkey-add").hidden = true;
+        $("passkey-unsupported").hidden = false;
+    }
+
+    const signinButton = $("passkey-signin");
+    if (signinButton && passkeysWork) {
+        signinButton.hidden = false;
+        signinButton.addEventListener("click", async () => {
+            signinButton.disabled = true;
+            showPasskeyError("");
+            try {
+                const options = await postJSON("/login/passkey/options");
+                options.challenge = b64.decode(options.challenge);
+                (options.allowCredentials || []).forEach((c) => { c.id = b64.decode(c.id); });
+                const cred = await navigator.credentials.get({ publicKey: options });
+                const result = await postJSON("/login/passkey", credentialJSON(cred));
+                location.assign(result.redirect || "/");
+            } catch (e) {
+                if (!cancelled(e)) showPasskeyError(e.message || "That didn't work. Try again?");
+                signinButton.disabled = false;
+            }
+        });
+    }
 
     $("restore-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();

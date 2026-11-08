@@ -1,6 +1,8 @@
 /* Ruff local store: notes live in this browser (IndexedDB) first.
    Works offline and without an account; signed-in devices sync through
-   /api/sync (newest edit wins, deletions travel as tombstones). */
+   /api/sync. Each note remembers the server version it was edited from
+   (`base`), so an edit made on two devices at once keeps both versions,
+   and a deletion never removes an edit it hadn't seen. */
 (function () {
     "use strict";
 
@@ -87,8 +89,10 @@
     }
 
     async function save(note) {
+        const id = note.id || newId();
         const saved = {
-            id: note.id || newId(),
+            id,
+            base: (await getOne(NOTES, id))?.base ?? null,
             text: note.text || "",
             tags: note.tags || [],
             updated_at: Date.now(),
@@ -101,7 +105,8 @@
     }
 
     async function remove(id) {
-        await putOne(NOTES, { id, text: "", tags: [], updated_at: Date.now(), deleted: true, dirty: true });
+        const base = (await getOne(NOTES, id))?.base ?? null;
+        await putOne(NOTES, { id, base, text: "", tags: [], updated_at: Date.now(), deleted: true, dirty: true });
         scheduleSync();
     }
 
@@ -131,27 +136,34 @@
                     headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRFToken": csrf },
                     body: JSON.stringify({
                         cursor: await meta.get("cursor") || null,
-                        changes: dirty.map(({ id, text, tags, updated_at, deleted }) => ({ id, text, tags, updated_at, deleted })),
+                        changes: dirty.map(({ id, base, text, tags, updated_at, deleted }) => ({ id, base, text, tags, updated_at, deleted })),
                     }),
                 });
                 if (response.status === 401) { emit("signed-out"); return { state: "signed-out" }; }
                 if (!response.ok) { emit("error"); return { state: "error" }; }
                 const data = await response.json();
 
-                // Our changes the server took (or settled): no longer dirty, unless edited meanwhile
+                // Our changes the server took (or settled): no longer dirty, unless
+                // edited meanwhile. Either way, later edits build on the server's version.
                 const sentAt = new Map(dirty.map((n) => [n.id, n.updated_at]));
+                const versions = data.versions || {};
                 for (const id of data.accepted) {
                     const current = await getOne(NOTES, id);
-                    if (current && current.updated_at === sentAt.get(id)) {
+                    if (!current) continue;
+                    const base = versions[id] ?? current.base ?? null;
+                    if (current.updated_at === sentAt.get(id)) {
                         if (current.deleted) await tx(NOTES, "readwrite", (os, map) => (map ? map.delete(id) : os.delete(id)));
-                        else await putOne(NOTES, { ...current, dirty: false });
+                        else await putOne(NOTES, { ...current, base, dirty: false });
+                    } else {
+                        await putOne(NOTES, { ...current, base });
                     }
                 }
-                // Theirs: take anything newer than ours
+                // Theirs. A note edited here since is left alone: the next sync sends
+                // it with its base, and the server keeps both versions if they differ.
                 for (const remote of data.stashes) {
                     const local = await getOne(NOTES, remote.id);
-                    if (!local || !local.dirty || remote.updated_at >= local.updated_at) {
-                        await putOne(NOTES, { ...remote, deleted: false, dirty: false });
+                    if (!local || !local.dirty) {
+                        await putOne(NOTES, { ...remote, base: remote.updated_at, deleted: false, dirty: false });
                     }
                 }
                 for (const id of data.deleted) {
@@ -161,8 +173,10 @@
                 await meta.set("cursor", data.cursor);
                 const more = all.filter((n) => n.dirty).length > dirty.length;
                 emit(data.rejected.length ? "partial" : "synced");
+                if (data.conflicts) emit("conflict");
                 if (more) scheduleSync(100);
-                return { state: "synced", changed: data.stashes.length + data.deleted.length, rejected: data.rejected };
+                return { state: "synced", changed: data.stashes.length + data.deleted.length, rejected: data.rejected,
+                         conflicts: data.conflicts || 0 };
             } catch (e) {
                 emit("offline");
                 return { state: "offline" };
@@ -190,14 +204,21 @@
         if (userId) await sync();
     })();
 
-    /* Signing out: send what's left, then clear this device */
+    /* Signing out: send what's left, then clear this device (notes and the
+       offline copies of pages). Deleting the account (data-wipe) skips the send. */
+    async function clearDevice() {
+        await clearStore(NOTES);
+        await clearStore(META);
+        if ("caches" in window) {
+            for (const key of await caches.keys()) await caches.delete(key);
+        }
+    }
     document.addEventListener("submit", async (event) => {
         const form = event.target;
         if (!form.matches("[data-signout]") || form.dataset.cleared) return;
         event.preventDefault();
-        await sync();
-        await clearStore(NOTES);
-        await clearStore(META);
+        if (!form.hasAttribute("data-wipe")) await sync();
+        await clearDevice();
         form.dataset.cleared = "yes";
         form.submit();
     });

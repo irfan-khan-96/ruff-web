@@ -13,6 +13,7 @@ import secrets
 import sys
 import uuid
 from flask import Flask, render_template, g, request, has_request_context
+from flask.globals import request_ctx
 from flask_compress import Compress
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -125,6 +126,15 @@ def create_app(config_name: str = None) -> Flask:
         return {"csp_nonce": get_csp_nonce, "app_name": app.config["APP_NAME"]}
 
     @app.after_request
+    def mark_offline_shells(response):
+        """Let the service worker keep these pages for offline use (they hold
+        no notes); not when they carry one-off flash messages."""
+        if (request.method == "GET" and response.status_code == 200
+                and request.endpoint in OFFLINE_SHELLS and not request_ctx.flashes):
+            response.headers["X-Offline-Shell"] = "1"
+        return response
+
+    @app.after_request
     def set_security_headers(response):
         response.headers["Content-Security-Policy"] = build_csp(get_csp_nonce())
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -152,6 +162,9 @@ def create_app(config_name: str = None) -> Flask:
 
 
 MIN_SECRET_LENGTH = 32
+
+# Pages the service worker may keep for offline use (see static/sw.js)
+OFFLINE_SHELLS = {"main.index", "main.view_stashes", "main.pass_hub", "main.lounge"}
 
 
 @functools.lru_cache(maxsize=None)
