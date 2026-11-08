@@ -8,14 +8,38 @@
   "theme_color": "#fffdf6",
   "icons": [
     {
-      "src": "/static/images/mascot.svg",
+      "src": "/static/images/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "/static/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [
-    { "name": "New note", "url": "/" },
-    { "name": "Pass a note", "url": "/pass" }
+    {
+      "name": "New note",
+      "url": "/"
+    },
+    {
+      "name": "Pass a note",
+      "url": "/pass"
+    }
   ]
 }

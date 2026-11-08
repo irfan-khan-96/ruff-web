@@ -7,8 +7,9 @@
     <meta name="description" content="A pocket notebook: jot things down, stash them, and pass notes like it's recess.">
     <meta name="theme-color" content="#fffdf6" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#1b2723" media="(prefers-color-scheme: dark)">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/mascot.svg') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/mascot.svg') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/icon.svg') }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='images/icon-192.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/apple-touch-icon.png') }}">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <script nonce="{{ csp_nonce() }}">
         // Apply the theme before first paint (no flash of the wrong theme)

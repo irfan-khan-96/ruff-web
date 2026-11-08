@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Ruff</title>
+  <!-- Ruff: a notebook page with a to-do ticked off, taped down, its corner
+       folded over ready to pass on. The yellow is the app's accent. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd45c"/>
+      <stop offset="1" stop-color="#ffbb24"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(256 256) scale(0.78) translate(-256 -262)">
+  <g transform="rotate(-6 256 262)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- shadow -->
+    <path d="M140 118h248v236l-64 64H140z" fill="#1f2d2b" opacity="0.18" transform="translate(10 14)"/>
+    <!-- page with the bottom-right corner folded under -->
+    <path d="M140 118h248v236l-64 64H140z" fill="#fffdf6" stroke="#1f2d2b" stroke-width="12"/>
+    <!-- red margin and blue rules -->
+    <path d="M188 124v288" stroke="#e05a5a" stroke-width="6" opacity="0.7"/>
+    <path d="M150 214h232M150 282h232M150 350h168" stroke="#3878c8" stroke-width="6" opacity="0.45"/>
+    <!-- ticked to-do -->
+    <rect x="206" y="160" width="44" height="44" rx="9" fill="#ffd45c" stroke="#1f2d2b" stroke-width="10"/>
+    <path d="M215 182l11 11 22-26" fill="none" stroke="#1f2d2b" stroke-width="11"/>
+    <path d="M270 182h86" stroke="#1f2d2b" stroke-width="12" opacity="0.35"/>
+    <!-- open to-do -->
+    <rect x="206" y="228" width="44" height="44" rx="9" fill="#fffdf6" stroke="#1f2d2b" stroke-width="10"/>
+    <path d="M270 250h70" stroke="#1f2d2b" stroke-width="12"/>
+    <!-- a scribbled line -->
+    <path d="M206 318c20-10 38 8 58 0s38-8 56 0" fill="none" stroke="#1f2d2b" stroke-width="12"/>
+    <!-- folded corner -->
+    <path d="M388 354h-50a14 14 0 0 0-14 14v50z" fill="#f1e2b8" stroke="#1f2d2b" stroke-width="12"/>
+    <!-- tape -->
+    <rect x="214" y="92" width="104" height="40" rx="4" fill="#ffffff" opacity="0.8" transform="rotate(4 266 112)"/>
+  </g>
+  </g>
+</svg>
