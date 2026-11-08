@@ -217,12 +217,170 @@
             rosterBox.hidden = count === 0;
         }
 
-        function toggleTask(lineIndex, done) {
-            const lines = text.value.split("\n");
-            lines[lineIndex] = lines[lineIndex].replace(ROSTER, (_, lead) => `${lead}[${done ? "x" : " "}] `);
-            text.value = lines.join("\n");
+        const lineStartOf = (index) => text.value.split("\n").slice(0, index).reduce((sum, line) => sum + line.length + 1, 0);
+        const lineEndAt = (start) => { const end = text.value.indexOf("\n", start); return end === -1 ? text.value.length : end; };
+        const lineStartAt = (pos) => text.value.lastIndexOf("\n", pos - 1) + 1;
+
+        function toggleTask(lineIndex, done) { setTask(lineStartOf(lineIndex), done); }
+
+        /* Ticks a to-do (or unticks it), keeping the caret where it was */
+        function setTask(lineStart, done) {
+            const match = text.value.slice(lineStart, lineEndAt(lineStart)).match(ROSTER);
+            if (!match) return;
+            text.setRangeText(`${match[1]}[${done ? "x" : " "}] `, lineStart, lineStart + match[0].length, "preserve");
             changed();
         }
+
+        /* --- To-dos on the sheet: a real box drawn over each "[ ]" marker --- */
+        const marks = $("todo-marks");
+        const mirror = Object.assign(document.createElement("div"), { className: "todo-mirror" });
+        mirror.setAttribute("aria-hidden", "true");
+        text.after(mirror);
+        let drawQueued = false;
+        const queueDraw = () => {
+            if (drawQueued) return;
+            drawQueued = true;
+            requestAnimationFrame(drawTodos);
+        };
+
+        function drawTodos() {
+            drawQueued = false;
+            marks.textContent = "";
+            mirror.textContent = "";
+            const lines = text.value.split("\n");
+            if (!lines.some((line) => ROSTER.test(line))) return;
+            // The mirror lays the text out exactly like the sheet, so each marker can be measured
+            const style = getComputedStyle(text);
+            for (const key of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing",
+                "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "tabSize"]) mirror.style[key] = style[key];
+            mirror.style.width = `${text.clientWidth}px`;
+            const found = [];
+            let offset = 0;
+            for (const line of lines) {
+                const match = line.match(ROSTER);
+                if (match) {
+                    const marker = Object.assign(document.createElement("span"), { textContent: match[0].slice(match[1].length) });
+                    const rest = Object.assign(document.createElement("span"), { textContent: line.slice(match[0].length) || "​" });
+                    mirror.append(match[1], marker, rest, "\n");
+                    found.push({ marker, rest, start: offset, done: match[2] !== " ", task: line.slice(match[0].length).trim() });
+                } else {
+                    mirror.append(line + "\n");
+                }
+                offset += line.length + 1;
+            }
+            const origin = mirror.getBoundingClientRect();
+            const lineHeight = parseFloat(style.lineHeight) || 32;
+            const reach = 26;  // the box's tap area reaches into the margin
+            for (const { marker, rest, start, done, task } of found) {
+                const at = marker.getClientRects()[0];
+                if (!at) continue;
+                const top = at.top - origin.top - (lineHeight - at.height) / 2;
+                const left = at.left - origin.left;
+                const box = document.createElement("span");
+                box.className = "todo-box";
+                box.setAttribute("role", "checkbox");
+                box.setAttribute("aria-checked", String(done));
+                box.setAttribute("aria-label", task ? `Done: ${task}` : "Done: (empty to-do)");
+                box.tabIndex = -1;
+                box.style.cssText = `top:${top}px;left:${left - reach}px;width:${Math.max(at.width, 20) + reach}px;height:${lineHeight}px`;
+                box.style.setProperty("--cover", `${Math.max(at.width, 20)}px`);
+                box.addEventListener("pointerdown", (event) => event.preventDefault());  // keep the caret in the sheet
+                box.addEventListener("click", () => setTask(start, !done));
+                marks.append(box);
+                if (done && task) {
+                    for (const piece of rest.getClientRects()) {
+                        const strike = document.createElement("span");
+                        strike.className = "todo-strike";
+                        strike.style.cssText = `top:${piece.top - origin.top + piece.height / 2}px;left:${piece.left - origin.left}px;width:${piece.width}px`;
+                        marks.append(strike);
+                    }
+                }
+            }
+            marks.style.transform = `translateY(${-text.scrollTop}px)`;
+        }
+
+        text.addEventListener("scroll", () => { marks.style.transform = `translateY(${-text.scrollTop}px)`; });
+        if (window.ResizeObserver) new ResizeObserver(queueDraw).observe(text);
+        document.fonts?.ready.then(queueDraw);
+
+        /* The caret never hides under a box: it jumps to just after the marker */
+        function markerAt(pos) {
+            const start = lineStartAt(pos);
+            const match = text.value.slice(start, lineEndAt(start)).match(ROSTER);
+            return match ? { start, from: start + match[1].length, to: start + match[0].length } : null;
+        }
+        function keepCaretOutOfMarkers() {
+            const pos = text.selectionStart;
+            if (pos !== text.selectionEnd) return;
+            const marker = markerAt(pos);
+            if (marker && pos >= marker.from && pos < marker.to) text.setSelectionRange(marker.to, marker.to);
+        }
+        text.addEventListener("pointerup", keepCaretOutOfMarkers);
+        text.addEventListener("keyup", keepCaretOutOfMarkers);
+
+        /* Backspace right after a marker turns the to-do back into a plain line */
+        text.addEventListener("beforeinput", (event) => {
+            if (event.inputType !== "deleteContentBackward") return;
+            const pos = text.selectionStart;
+            const marker = pos === text.selectionEnd && markerAt(pos);
+            if (!marker || pos !== marker.to) return;
+            event.preventDefault();
+            text.setRangeText("", marker.from, marker.to, "end");
+            changed();
+        });
+
+        /* Lists continue on Enter: to-dos, - bullets, 1. numbers; Enter on an empty item ends the list.
+           Handled after the line break goes in, so phone keyboards (which don't report the key) work too. */
+        let softBreak = false;
+        text.addEventListener("keydown", (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+                event.preventDefault();
+                stashNow();
+                return;
+            }
+            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {  // Ctrl+Enter ticks the current to-do
+                const marker = markerAt(text.selectionStart);
+                if (marker) {
+                    event.preventDefault();
+                    setTask(marker.start, text.value[marker.from + 1] === " ");
+                }
+                return;
+            }
+            if (event.key === "Enter") softBreak = event.shiftKey;
+            if (event.key === "ArrowLeft" && !event.shiftKey && text.selectionStart === text.selectionEnd) {
+                const marker = markerAt(text.selectionStart);
+                if (marker && text.selectionStart === marker.to) {
+                    event.preventDefault();
+                    const to = Math.max(marker.start - 1, 0);
+                    text.setSelectionRange(to, to);
+                }
+            }
+        });
+        text.addEventListener("input", (event) => {
+            const isBreak = /^insert(LineBreak|Paragraph)$/.test(event.inputType)
+                || (event.inputType === "insertText" && (event.data || "").endsWith("\n"));
+            const soft = softBreak;
+            softBreak = false;
+            if (!isBreak || soft) return;
+            const pos = text.selectionStart;
+            if (pos !== text.selectionEnd || text.value[pos - 1] !== "\n") return;
+            const prevStart = lineStartAt(pos - 1);
+            const prev = text.value.slice(prevStart, pos - 1);
+            let match = prev.match(ROSTER);
+            let marker;
+            if (match) {
+                marker = `${match[1]}[ ] `;
+            } else if ((match = prev.match(/^(\s*)([-*•] |(\d+)([.)]) )/))) {
+                marker = match[3] ? `${match[1]}${Number(match[3]) + 1}${match[4]} ` : match[1] + match[2];
+            } else {
+                return;
+            }
+            if (prev.slice(match[0].length).trim()) {
+                text.setRangeText(marker, pos, pos, "end");
+            } else {
+                text.setRangeText("", prevStart, pos, "end");  // an empty item: the list ends here
+            }
+        });
 
         $("roster-add")?.addEventListener("click", () => {
             const start = text.selectionStart;
@@ -237,35 +395,11 @@
             text.focus();
         });
 
-        /* Lists continue on Enter: [ ] tasks, - bullets, 1. numbers; Enter on an empty item ends it */
-        text.addEventListener("keydown", (event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-                event.preventDefault();
-                stashNow();
-                return;
-            }
-            if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
-            const pos = text.selectionStart;
-            if (pos !== text.selectionEnd) return;
-            const lineStart = text.value.lastIndexOf("\n", pos - 1) + 1;
-            const line = text.value.slice(lineStart, pos);
-            const match = line.match(/^(\s*)(\[[ xX]\] |[-*•] |(\d+)[.)] )/);
-            if (!match) return;
-            event.preventDefault();
-            if (line.trim() === match[0].trim()) {
-                text.setRangeText("", lineStart, pos, "end");
-            } else {
-                const marker = match[3] ? `${Number(match[3]) + 1}${match[2].trim().slice(-1)} `
-                    : match[2].startsWith("[") ? "[ ] " : match[2];
-                text.setRangeText(`\n${match[1]}${marker}`, pos, pos, "end");
-            }
-            changed();
-        });
-
         /* --- Saving: drafts until stashed; stashed notes autosave on this device --- */
         function changed() {
             countWords();
             renderRoster();
+            queueDraw();
             if (noteId) {
                 setStatus("Editing…");
                 clearTimeout(saveTimer);
@@ -322,6 +456,7 @@
 
         countWords();
         renderRoster();
+        queueDraw();
     }
 
     /* ======================================================================

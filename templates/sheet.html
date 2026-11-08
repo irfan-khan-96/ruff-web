@@ -8,13 +8,18 @@
         <h1 class="sr-only">{{ "Your stash" if stash_id else "Write something" }}</h1>
         <form id="sheet" class="sheet tape" data-stash-id="{{ stash_id or '' }}" autocomplete="off">
             <label for="sheet-text" class="sr-only">Your note</label>
-            <textarea id="sheet-text" name="text" class="sheet-text" maxlength="50000" spellcheck="true"
-                      placeholder="Start writing… the first line becomes the title"
-                      {% if not stash_id %}autofocus{% endif %}></textarea>
+            <div class="sheet-paper">
+                <textarea id="sheet-text" name="text" class="sheet-text" maxlength="50000" spellcheck="true"
+                          placeholder="Start writing… the first line becomes the title"
+                          aria-describedby="todo-hint"
+                          {% if not stash_id %}autofocus{% endif %}></textarea>
+                <div class="todo-layer" id="todo-layer"><div class="todo-marks" id="todo-marks"></div></div>
+            </div>
+            <p class="sr-only" id="todo-hint">Lines starting with [ ] are to-dos. Ctrl+Enter marks the current one done.</p>
             <div class="sheet-bar">
                 <label for="sheet-tags" class="sr-only">Tags</label>
                 <input id="sheet-tags" name="tags" class="sheet-tags" placeholder="#tags, comma separated">
-                <button type="button" class="btn btn-quiet" id="roster-add" title="Add a to-do (or type [ ] at the start of a line)">☐ To-do</button>
+                <button type="button" class="btn btn-quiet" id="roster-add" title="Add a to-do (or type [ ] at the start of a line)"><span class="todo-icon" aria-hidden="true"></span>To-do</button>
                 <button type="submit" class="btn" id="stash-button">{{ "Save" if stash_id else "Stash it" }}</button>
             </div>
             <div class="sheet-status">

@@ -171,6 +171,63 @@ def test_sheet_lists_roster_and_shortcut(live_server, new_page):
     expect(page.locator("#sheet-text")).to_have_value(re.compile(r"^Kickball plan\n\[x\] Find the ball"))
 
 
+def test_todo_boxes_on_the_sheet(live_server, new_page):
+    page = new_page()
+    page.goto(live_server.url + "/")
+    text = page.locator("#sheet-text")
+    text.click()
+    text.type("Chores\n[ ] Sweep")
+    text.press("Enter")  # the next to-do starts by itself
+    text.type("Dust")
+    expect(text).to_have_value("Chores\n[ ] Sweep\n[ ] Dust")
+
+    boxes = page.locator(".todo-box")
+    expect(boxes).to_have_count(2)
+    # Each box sits on its own line, over the brackets
+    first, second = boxes.nth(0).bounding_box(), boxes.nth(1).bounding_box()
+    assert second["y"] - first["y"] == 32
+
+    boxes.nth(0).click()  # tick it
+    expect(text).to_have_value("Chores\n[x] Sweep\n[ ] Dust")
+    expect(boxes.nth(0)).to_have_attribute("aria-checked", "true")
+    expect(page.locator(".todo-strike")).to_have_count(1)
+    text.type("ing")  # the caret stayed where it was
+    expect(text).to_have_value("Chores\n[x] Sweep\n[ ] Dusting")
+    text.press("Control+Enter")  # ticks the current line
+    expect(text).to_have_value("Chores\n[x] Sweep\n[x] Dusting")
+    boxes.nth(0).click()  # untick
+    expect(text).to_have_value("Chores\n[ ] Sweep\n[x] Dusting")
+
+    # Home doesn't put the caret under the box; Backspace there makes a plain line
+    text.press("Home")
+    text.type("Go ")
+    expect(text).to_have_value("Chores\n[ ] Sweep\n[x] Go Dusting")
+    text.press("End")
+    for _ in range("Go Dusting".__len__()):
+        text.press("Backspace")
+    text.press("Backspace")
+    expect(text).to_have_value("Chores\n[ ] Sweep\n")
+    expect(boxes).to_have_count(1)
+
+
+def test_enter_continues_todos_on_a_phone(live_server, new_page):
+    # Phone keyboards report Enter as an unidentified key: only the line break arrives
+    page = new_page(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    page.goto(live_server.url + "/")
+    text = page.locator("#sheet-text")
+    text.click()
+    text.type("Trip\n[ ] Tickets")
+    page.evaluate("""() => {
+        const t = document.getElementById("sheet-text");
+        t.setRangeText("\\n", t.selectionStart, t.selectionStart, "end");
+        t.dispatchEvent(new InputEvent("input", { inputType: "insertLineBreak", bubbles: true }));
+    }""")
+    text.type("Snacks")
+    expect(text).to_have_value("Trip\n[ ] Tickets\n[ ] Snacks")
+    expect(page.locator(".todo-box")).to_have_count(2)
+    expect(page.locator("#roster")).to_be_hidden()  # the boxes are on the sheet itself
+
+
 def test_search_tags_and_toss(live_server, new_page):
     page = new_page()
     page.goto(live_server.url + "/")
@@ -290,7 +347,7 @@ def test_signing_out_clears_offline_copies(live_server, new_page):
     page.get_by_role("button", name="Sign out", exact=True).click()
     expect(page.locator(".toast")).to_contain_text("Logged out")
     cached = page.evaluate("""async () => {
-        const pages = await caches.open("ruff-v6-pages");
+        const pages = await caches.open("ruff-v7-pages");
         return (await pages.keys()).map((r) => new URL(r.url).pathname);
     }""")
     assert "/lounge" not in cached  # the signed-in Lounge (with the email) is gone

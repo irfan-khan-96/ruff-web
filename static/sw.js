@@ -4,7 +4,7 @@
 // use. Static files have content-hashed URLs and are kept on first use.
 // Signing out deletes both caches (see script.js), so nothing outlives it.
 // v6: offline shells and static files.
-const CACHE_VERSION = "ruff-v6";
+const CACHE_VERSION = "ruff-v7";
 const PAGES = `${CACHE_VERSION}-pages`;
 const STATIC = `${CACHE_VERSION}-static`;
 

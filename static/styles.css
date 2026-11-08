@@ -444,6 +444,69 @@ a { color: var(--link); text-underline-offset: 2px; }
 }
 
 .sheet-text:focus { outline: none; }
+
+/* To-dos: real boxes drawn over the sheet's "[ ]" markers */
+.sheet-paper { position: relative; }
+.todo-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.todo-marks { position: absolute; inset: 0 0 auto; }
+.todo-mirror {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    pointer-events: none;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    box-sizing: border-box;
+}
+.todo-box {
+    position: absolute;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    pointer-events: auto;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+/* Hides the brackets underneath and draws the box */
+.todo-box::before {
+    content: "";
+    width: var(--cover);
+    height: 24px;
+    background: var(--surface-raised);
+}
+.todo-box::after {
+    content: "";
+    position: absolute;
+    right: 6px;  /* a little air before the words */
+    width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    border: 2px solid var(--ink);
+    border-radius: 5px;
+    background: var(--surface-raised) no-repeat center / 12px 12px;
+    transition: background-color 0.12s ease;
+}
+.todo-box:hover::after { border-color: var(--focus); }
+.todo-box[aria-checked="true"]::after {
+    background-color: var(--ink);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2.5 7.5l3 3 6-7' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+:root[data-theme="dark"] .todo-box[aria-checked="true"]::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2.5 7.5l3 3 6-7' fill='none' stroke='%231b2723' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.todo-strike { position: absolute; height: 2px; margin-top: -1px; background: var(--ink-muted); pointer-events: none; }
+
+/* The To-do button's icon: the same box */
+.todo-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    vertical-align: -3px;
+    border: 2px solid currentColor;
+    border-radius: 4px;
+}
 .sheet:focus-within { border-color: var(--focus); }
 
 /* Body font, not the marker font: keeps the 29 KB handwriting font off the first visit */
@@ -516,9 +579,9 @@ a { color: var(--link); text-underline-offset: 2px; }
 }
 .recent a:hover, .recent a[aria-current="page"] { background: var(--surface); }
 
-/* Phones: the Stash tab already lists everything */
+/* Phones: the Stash tab already lists everything, and the to-dos have their boxes on the sheet */
 @media (max-width: 1023px) {
-    .recent { display: none; }
+    .recent, .roster { display: none; }
 }
 
 /* Tablets and up: the sheet with the roster and recent stashes beside it */
